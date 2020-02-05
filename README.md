@@ -24,7 +24,7 @@ I want to be able:
 - Dataset loading & parsing is independent from Tensorflow and memory optimized (original repo couldn't fit in my 32GB CPU RAM)
 - Support of Pytorch,
 - Samples of models and trainings with HuggingFace transformers & tokenizers,
-- Mostly typed Python (with Mypy) ([sample code](./codenets/codesearchnet/multi_branch_model.py)),
+- Mostly typed Python (with Mypy) ([sample code](./codenets/codesearchnet/multi_branch_model.py#L31-L64)),
 - some typesafe experimental "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries) ([sample code](./codenets/blob/master/codenets/codesearchnet/multi_branch_model.py#L31-L64))
 - HOCON configuration for full models and trainings ([sample config](./conf/default.conf)),
 - Poetry Python dependencies management with isolated virtualenv.

@@ -1,0 +1,28 @@
+OLD Full tokenizers training took: 958.1463716030121 sec
+
+Full tokenizers training took: 996.1864445209503 sec
+
+
+RUST Full tokenizers training took: 100.77164936065674 sec
+
+
+[00:00:05] pickles/tokens/java_query.txt        44.27MB  /  44.27MB
+[00:00:03] pickles/tokens/php_query.txt         26.13MB  /  26.13MB
+[00:00:05] pickles/tokens/go_query.txt          44.76MB  /  44.76MB
+[00:00:01] pickles/tokens/javascript_query.txt  10.35MB  /  10.35MB
+[00:00:04] pickles/tokens/python_query.txt      35.21MB  /  35.21MB
+[00:00:00] pickles/tokens/ruby_query.txt        4.35MB   /   4.35MB
+[00:00:05] Tokenize words                       594874   /   594874
+[00:00:05] Count pairs                          594874   /   594874
+[00:01:05] Compute merges                       28181    /    28181
+
+[00:00:31] pickles/tokens/java_code.txt         274.39MB / 274.39MB
+[00:00:13] Tokenize words                       1379972  /  1379972
+[00:00:14] Count pairs                          1379972  /  1379972
+[00:02:04] Compute merges                       28384    /    28384
+
+[00:00:38] pickles/tokens/php_code.txt          313.24MB / 313.24MB
+[00:00:14] Tokenize words                       1500680  /  1500680
+[00:00:15] Count pairs                          1500680  /  1500680
+[00:02:16] Compute merges                       28195    /    28195
+

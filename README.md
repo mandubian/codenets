@@ -13,11 +13,8 @@ At the same time, I want to use this code base to evaluate advanced programming 
 This is a ~80% rewrite of the original [Github repository](https://github.com/github/CodeSearchNet) open-sourced by Microsoft team based on a paper and blog post. This repository is quite good and complete but is exclusively focused on Tensorflow even for the dataset part. It also manages a benchmark on WanDB for the CodeSearchNet dataset.
 
 > Why did I rewrite an already complete library?
-
-I want to be able:
-
-- to use the dataset indenpendently of Tensorflow which is not the library I prefer (Pytorch is my current candidate).
-- to be able to re-use the best NLP Deep Learning library for now [Huggingface Transformers](https://github.com/huggingface/transformers) and more recently their new beta project [Huggingface Tokenizers](https://github.com/huggingface/tokenizers) and I must say it's much better used in Pytorch.
+- to use the dataset independently of Tensorflow which is not the library I advise fo NLP (Pytorch is my current choice until I find another one ;)).
+- to be able to use the best NLP Deep Learning library for now [Huggingface Transformers](https://github.com/huggingface/transformers) and more recently their new beta project [Huggingface Tokenizers](https://github.com/huggingface/tokenizers) and I must say it's much better used in Pytorch.
 
 > What does it provide compared to original repo?
 

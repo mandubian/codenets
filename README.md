@@ -1,4 +1,6 @@
-# CodeNets : my own playground to play with PLP (Programming Language Processing) datasets & Deep Learning
+# CodeNets
+
+> My own playground to play with PLP (Programming Language Processing) datasets & Deep Learning
 
 In this repository, I want to study **_PLP_, programming languages processing**(searching, modifying, generating, translating...) using AI techniques like Deep Learning.
 
@@ -8,7 +10,7 @@ At the same time, I want to use this code base to evaluate advanced programming 
 
 ### [CodeSearchNet](https://github.com/github/CodeSearchNet)
 
-This is a 90% rewrite of the original [Github repository](https://github.com/github/CodeSearchNet) open-sourced by Microsoft team based on a paper and blog post. This repository is quite good and complete but is exclusively focused on Tensorflow even for the dataset part. It also manages a benchmark on WanDB for the CodeSearchNet dataset.
+This is a ~80% rewrite of the original [Github repository](https://github.com/github/CodeSearchNet) open-sourced by Microsoft team based on a paper and blog post. This repository is quite good and complete but is exclusively focused on Tensorflow even for the dataset part. It also manages a benchmark on WanDB for the CodeSearchNet dataset.
 
 > Why did I rewrite an already complete library?
 
@@ -19,11 +21,12 @@ I want to be able:
 
 > What does it provide compared to original repo?
 
+- Dataset loading & parsing is independent from Tensorflow and memory optimized (original repo couldn't fit in my 32GB CPU RAM)
 - Support of Pytorch,
 - Samples of models and trainings with HuggingFace transformers & tokenizers,
-- Mostly typed Python (with Mypy),
-- some typesafe experimental "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries)
-- HOCON configuration for full models and trainings (a [sample](./conf/default.conf)),
+- Mostly typed Python (with Mypy) ([sample code](./codenets/codesearchnet/multi_branch_model.py)),
+- some typesafe experimental "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries) ([sample code](./codenets/blob/master/codenets/codesearchnet/multi_branch_model.py#L31-L64))
+- HOCON configuration for full models and trainings ([sample config](./conf/default.conf)),
 - Poetry Python dependencies management with isolated virtualenv.
 
 
@@ -43,7 +46,8 @@ I want to be able:
 Following instructions to install [Poetry](https://python-poetry.org/docs/).
 
 >Why poetry instead of basic requirements.txt?
->Because its dependency management is more automatic. Poetry has big defaults & bugs but its dependency management is much more production ready than other Python solutions I've tested and it isolates by default your python environment in a virtual env (The other best solution I've found is a hand-made virtualenv in which I install all my dependencies with a requirements.txt).
+
+Because its dependency management is more automatic. Poetry has big defaults & bugs but its dependency management is much more production ready than other Python solutions I've tested and it isolates by default your python environment in a virtual env (The other best solution I've found is a hand-made virtualenv in which I install all my dependencies with a requirements.txt).
 
 ### Install a decent Python (with pyenv for example)
 
@@ -66,11 +70,11 @@ Now you should be in a console with your virtualenv environment and all your cus
 
 ### Training model
 
-#### Single Query encoder, One encoder per language
+#### Single Bert query encoder, Multiple Bert encoders (one encoder per language)
 
 _Incoming_
 
-#### Single Query encoder, single encoder for all languages
+#### Single Bert query encoder, Single Bert encoder for all languages
 
 _Incoming_
 

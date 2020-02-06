@@ -22,6 +22,7 @@ Options:
     --debug                          Enable debug routines. [default: False]
 """
 
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -34,11 +35,11 @@ from loguru import logger
 from pyhocon import ConfigFactory, ConfigTree
 from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
+import wandb
 
 from codenets.codesearchnet.dataset import BalancedBatchSchedulerSampler, build_lang_dataset_single_code_tokenizer
 from codenets.codesearchnet.single_branch_model import SingleBranchTrainingContext
 from codenets.save import save_records_best, save_records_last
-from codenets.tensorboard_utils import Tensorboard
 
 logger.remove()
 logger.add(sys.stderr, level="DEBUG", colorize=True, backtrace=False)
@@ -57,7 +58,7 @@ def run_epoch(
     training_ctx: SingleBranchTrainingContext,
     dataloader: torch.utils.data.DataLoader,
     log_interval: int,
-    tb: Tensorboard = None,
+    # tb: Tensorboard = None,
     is_train: bool = True,
 ) -> EpochResult:
     """
@@ -135,20 +136,33 @@ def run_epoch(
             t_batch.update(1)
 
             if batch_idx % log_interval == 0:
-                if tb is not None:
-                    tb.add_scalars(
+                if training_ctx.tensorboard is not None:
+                    training_ctx.tensorboard.add_scalars(
                         {f"{prefix}_loss": loss, f"{prefix}_mrr": mrr},
                         group=prefix,
                         sub_group="batch",
                         global_step=training_ctx.train_global_step if is_train else training_ctx.val_global_step,
                     )
+                if training_ctx.wandb_activated:
+                    wandb.log(
+                        {f"{prefix}_batch_loss": loss, f"{prefix}_batch_mrr": mrr}, step=training_ctx.train_global_step
+                    )
     used_time = time.time() - epoch_start
-    if tb is not None:
-        tb.add_scalars(
+    if training_ctx.tensorboard is not None:  # mypy needs that
+        training_ctx.tensorboard.add_scalars(
             {f"{prefix}_loss": loss, f"{prefix}_mrr": mrr, f"{prefix}_samples_per_sec": int(epoch_samples / used_time)},
             group=prefix,
             sub_group="epoch",
             global_step=epoch,
+        )
+    if training_ctx.wandb_activated:
+        wandb.log(
+            {
+                f"epoch": epoch,
+                f"{prefix}_epoch_loss": loss,
+                f"{prefix}_epoch_mrr": mrr,
+                f"{prefix}_epoch_samples_per_sec": int(epoch_samples / used_time),
+            }
         )
 
     return EpochResult(loss, mrr, used_time)
@@ -208,12 +222,6 @@ def run(args, tag_in_vcs=False) -> None:
     )
     logger.info(f"Built val_dataloader [Length:{len(val_dataloader)} x Batch:{training_ctx.val_batch_size}]")
 
-    tb = Tensorboard(
-        output_dir=training_ctx.tensorboard_path,
-        experiment_id=training_ctx.training_name,
-        unique_id=training_ctx.training_iteration,
-    )
-
     with trange(training_ctx.start_epoch, training_ctx.epochs) as t_epoch:
         # for epoch in range(start_epoch, epochs):
         for epoch in t_epoch:
@@ -225,7 +233,7 @@ def run(args, tag_in_vcs=False) -> None:
                 # dataloader=val_dataloader,
                 log_interval=max(int(len(train_dataloader) / 100), training_ctx.min_log_interval),
                 # log_interval=max(int(len(val_dataloader) / 100), training_ctx.min_log_interval),
-                tb=tb,
+                # tb=tb,
                 is_train=True,
             )
 
@@ -235,7 +243,7 @@ def run(args, tag_in_vcs=False) -> None:
                 training_ctx=training_ctx,
                 dataloader=val_dataloader,
                 log_interval=min(int(len(val_dataloader) / 10), training_ctx.min_log_interval),
-                tb=tb,
+                # tb=tb,
                 is_train=False,
             )
 

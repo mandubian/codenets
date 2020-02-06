@@ -14,6 +14,8 @@ from codenets.codesearchnet.tokenizer_recs import (
     TokenizerRecordable,
     load_query_code_tokenizers_from_hocon_single_code_tokenizer,
 )
+from codenets.tensorboard_utils import Tensorboard
+import wandb
 from codenets.losses import load_loss_and_similarity_function
 from codenets.codesearchnet.poolers import MeanWeightedPooler
 from codenets.codesearchnet.huggingface import PreTrainedModelRecordable
@@ -176,7 +178,26 @@ class SingleBranchTrainingContext(RecordableMapping):
         self.max_grad_norm = self.conf["training.max_grad_norm"]
 
         self.pickle_path = Path(self.conf["training.pickle_path"])
+        self.tensorboard_activated = self.conf["training.tensorboard"]
         self.tensorboard_path = Path(self.conf["training.tensorboard_path"])
+        self.tensorboard: Optional[Tensorboard] = None
+        if self.tensorboard_activated:
+            logger.info("Activating Tensorboard")
+            self.tensorboard = Tensorboard(
+                output_dir=self.tensorboard_path, experiment_id=self.training_name, unique_id=self.training_iteration
+            )
+            # cfg = self.conf.as_plain_ordered_dict()
+            # self.tensorboard.add_scalars(cfg, global_step=0, group="train")
+            # self.tensorboard.add_scalars(cfg, global_step=0, group="val")
+
+        self.wandb_activated = self.conf["training.wandb"]
+        if not self.wandb_activated:
+            logger.info("Deactivating WanDB")
+            os.environ["WANDB_MODE"] = "dryrun"
+        else:
+            logger.info("Activating WanDB")
+            wandb.init(name=self.training_full_name, config=self.conf.as_plain_ordered_dict())
+
         self.output_dir = Path(self.conf["training.output_dir"])
 
         self.train_data_params = DatasetParams(**self.conf["dataset.train.params"])

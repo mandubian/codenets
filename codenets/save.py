@@ -41,9 +41,12 @@ def save_records_direct(path: Union[Path, str], rec: Recordable) -> bool:
     return rec.save(path)
 
 
-def save_records_best(path: Union[Path, str], rec: Recordable) -> bool:
+def save_records_best(path: Union[Path, str], rec: Recordable, suffix: Optional[str] = None) -> bool:
     prefix = os.path.basename(path)
-    best_path = Path(path) / f"{prefix}_best"
+    if suffix is not None:
+        best_path = Path(path) / f"{prefix}_best_{suffix}"
+    else:
+        best_path = Path(path) / f"{prefix}_best"
     if not os.path.isdir(best_path):
         os.makedirs(best_path)
 

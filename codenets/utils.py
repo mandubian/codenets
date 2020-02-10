@@ -7,11 +7,15 @@ from dpu_utils.codeutils import split_identifier_into_parts
 from pathlib import Path
 import numpy as np
 import glob
+import base64
+from pickle import dumps, loads
 
 IDENTIFIER_TOKEN_REGEX = re.compile("[_a-zA-Z][_a-zA-Z0-9]*")
 
 
 def runtime_import(class_name: str):
+    import importlib
+
     """
     Runtime import from a string using "." to split module & class names
     
@@ -22,10 +26,14 @@ def runtime_import(class_name: str):
         Class: The imported class
     """
     components = class_name.split(".")
-    mod = __import__(components[0])
-    for comp in components[1:]:
-        mod = getattr(mod, comp)
+    mod = getattr(importlib.import_module(".".join(components[:-1])), components[-1])
     return mod
+    # components = class_name.split(".")
+    # mod = __import__(components[0])
+    # for comp in components[1:]:
+    #     mod = getattr(mod, comp)
+    #     print("mod", mod)
+    # return mod
 
 
 def full_classname(cls):
@@ -93,3 +101,45 @@ def get_data_files_from_directory(data_dirs: List[Path], max_files_per_dir: Opti
 
     np.random.shuffle(files)  # This avoids having large_file_0, large_file_1, ... subsequences
     return files
+
+
+def stream_dump(iterable_to_pickle, file_obj):
+    """
+    Dump contents of an iterable iterable_to_pickle to file_obj, a file
+    opened in write mode
+    """
+    for elt in iterable_to_pickle:
+        stream_dump_elt(elt, file_obj)
+
+
+def stream_dump_elt(elt_to_pickle, file_obj):
+    """Dump one element to file_obj, a file opened in write mode"""
+    pickled_elt = dumps(elt_to_pickle)
+    encoded = base64.b64encode(pickled_elt)
+    file_obj.write(encoded)
+
+    # record separator is a blank line
+    # (since pickled_elt as base64 encoded cannot contain its own newlines)
+    file_obj.write(b"\n\n")
+
+
+def stream_load(file_obj):
+    """
+    Load contents from file_obj, returning a generator that yields one
+    element at a time
+    """
+    cur_elt = []  # type: ignore
+    for line in file_obj:
+        if line == b"\n":
+            encoded_elt = b"".join(cur_elt)
+            try:
+                pickled_elt = base64.b64decode(encoded_elt)
+                elt = loads(pickled_elt)
+            except EOFError:
+                print("EOF found while unpickling data")
+                print(pickled_elt)
+                raise StopIteration
+            cur_elt = []
+            yield elt
+        else:
+            cur_elt.append(line)

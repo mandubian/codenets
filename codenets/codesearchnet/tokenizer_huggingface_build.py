@@ -75,7 +75,7 @@ def run_single_code_tokenizer(args, tag_in_vcs=False) -> None:
             return default_sample_update(tpe, lang, tokens)
 
     build_huggingface_bpetokenizers_from_hocon_single_code_tokenizer(
-        conf, from_dataset_type="val", sample_update=sample_update
+        conf, from_dataset_type="train", sample_update=sample_update
     )
 
     tokenizers = load_query_code_tokenizers_from_hocon_single_code_tokenizer(conf)

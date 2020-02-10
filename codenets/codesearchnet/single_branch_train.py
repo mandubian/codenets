@@ -22,7 +22,6 @@ Options:
     --debug                          Enable debug routines. [default: False]
 """
 
-import os
 import sys
 import time
 from dataclasses import dataclass
@@ -38,7 +37,7 @@ from tqdm import tqdm, trange
 import wandb
 
 from codenets.codesearchnet.dataset import BalancedBatchSchedulerSampler, build_lang_dataset_single_code_tokenizer
-from codenets.codesearchnet.single_branch_model import SingleBranchTrainingContext
+from codenets.codesearchnet.single_branch_ctx import SingleBranchTrainingContext
 from codenets.save import save_records_best, save_records_last
 
 logger.remove()
@@ -251,18 +250,24 @@ def run(args, tag_in_vcs=False) -> None:
 
             if val_result.loss < training_ctx.best_loss:
                 training_ctx.best_loss = val_result.loss
-                training_ctx.best_mrr = val_result.mrr
-                training_ctx.best_epoch = epoch
-                logger.info(
-                    f"New best model loss:{training_ctx.best_loss} best_mrr:{training_ctx.best_mrr} epoch:{training_ctx.best_epoch}"
+                training_ctx.best_loss_epoch = epoch
+                logger.info(f"New best model loss:{training_ctx.best_loss} epoch:{training_ctx.best_loss_epoch}")
+                save_records_best(
+                    training_ctx.output_dir / training_ctx.training_full_name, training_ctx, suffix="loss"
                 )
-                save_records_best(training_ctx.output_dir / training_ctx.training_full_name, training_ctx)
+
+            if val_result.mrr < training_ctx.best_mrr:
+                training_ctx.best_mrr = val_result.mrr
+                training_ctx.best_mrr_epoch = epoch
+                logger.info(f"New best model MRR:{training_ctx.best_mrr} epoch:{training_ctx.best_mrr_epoch}")
+                save_records_best(training_ctx.output_dir / training_ctx.training_full_name, training_ctx, suffix="mrr")
 
             t_epoch.set_postfix(
                 {
                     f"best_loss": training_ctx.best_loss,
+                    "best_loss_epoch": training_ctx.best_loss_epoch,
                     "best_mrr": training_ctx.best_mrr,
-                    "best_epoch": training_ctx.best_epoch,
+                    "best_mrr_epoch": training_ctx.best_mrr_epoch,
                 }
             )
             t_epoch.update(1)

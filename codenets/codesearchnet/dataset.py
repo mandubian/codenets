@@ -22,11 +22,19 @@ from pathlib import Path
 import pickle
 import functools
 
+from enum import Enum
+
 from codenets.codesearchnet.data import DatasetParams, InputFeatures
 from codenets.utils import _to_subtoken_stream, get_data_files_from_directory
 from codenets.codesearchnet.original.utils import read_file_samples
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.original.metadata import QueryType
+
+
+class DatasetType(Enum):
+    TRAIN = "train"
+    VAL = "val"
+    TEST = "test"
 
 
 def convert_and_pad_token_sequence(

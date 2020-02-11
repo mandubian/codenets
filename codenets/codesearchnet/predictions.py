@@ -17,11 +17,13 @@ azure://semanticcodesearch/csharpdata/split/csharpCrawl-train
 
 Options:
     -h --help                        Show this screen.
-    --restore DIR                    specify restoration dir. [optional]
+    --restore DIR                    specify restoration dir.
+    --wandb_run_id <entity_name>/<project_name>/<run_id> Specify Wandb Run
     --debug                          Enable debug routines. [default: False]
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Tuple
 import torch
@@ -32,7 +34,9 @@ from loguru import logger
 import pandas as pd
 from annoy import AnnoyIndex
 from tqdm import tqdm
-
+import shutil
+from wandb.apis import InternalApi
+import wandb
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext
 
 
@@ -92,7 +96,23 @@ def compute_code_encodings_from_defs(
 
 
 def run(args, tag_in_vcs=False) -> None:
-    os.environ["WANDB_MODE"] = "dryrun"
+    args_wandb_run_id = args["--wandb_run_id"]
+    if args_wandb_run_id is not None:
+        entity, project, name = args_wandb_run_id.split("/")
+        os.environ["WANDB_RUN_ID"] = name
+        os.environ["WANDB_RESUME"] = "must"
+
+        wandb_api = wandb.Api()
+        # retrieve saved model from W&B for this run
+        logger.info("Fetching run from W&B...")
+        try:
+            wandb_api.run(args_wandb_run_id)
+        except wandb.CommError:
+            logger.error(f"ERROR: Problem querying W&B for wandb_run_id: {args_wandb_run_id}", file=sys.stderr)
+            sys.exit(1)
+
+    else:
+        os.environ["WANDB_MODE"] = "dryrun"
 
     logger.debug("Building Training Context")
     training_ctx: CodeSearchTrainingContext
@@ -105,7 +125,7 @@ def run(args, tag_in_vcs=False) -> None:
     queries_tokens, queries_masks = training_ctx.tokenize_query_sentences(
         queries, max_length=training_ctx.conf["dataset.common_params.query_max_num_tokens"]
     )
-    logger.info(f"queries_tokens: {queries_tokens}")
+    logger.info(f"queries: {queries}")
 
     training_ctx.eval_mode()
     with torch.no_grad():
@@ -122,32 +142,19 @@ def run(args, tag_in_vcs=False) -> None:
         topk = 100
         predictions = []
         language_token = "<lg>"
-        for language in ("python",):  # , "go", "javascript", "java", "php", "ruby"):
+        for language in ("python", "go", "javascript", "java", "php", "ruby"):
             # (codes_encoded_df, codes_masks_df, definitions) = get_language_defs(language, training_ctx, language_token)
 
             code_embeddings, definitions = compute_code_encodings_from_defs(language, training_ctx, language_token)
-            logger.debug(f"definitions {definitions.iloc[0]}")
-            logger.debug(f"code_embeddings {code_embeddings.values[:5]}")
             logger.info(f"Building Annoy Index of length {len(code_embeddings.values[0])}")
-            # indices: AnnoyIndex = AnnoyIndex(code_embeddings[0][0].shape[0], "angular")
             indices: AnnoyIndex = AnnoyIndex(len(code_embeddings.values[0]), "angular")
             # idx = 0
             for index, emb in enumerate(tqdm(code_embeddings.values)):
-                # logger.info(f"vectors {vectors}")
-                # for vector in vectors:
-                # if vector is not None:
-                # if idx < 10:
-                # logger.debug(f"vector {len(vector)}")
-                # indices.add_item(idx, vector)
-                # idx += 1
                 indices.add_item(index, emb)
             indices.build(10)
 
             for i, (query, query_embedding) in enumerate(tqdm(zip(queries, query_embeddings))):
                 idxs, distances = indices.get_nns_by_vector(query_embedding, topk, include_distances=True)
-                if i < 5:
-                    logger.debug(f"query_embedding {query_embedding}")
-                    logger.debug(f"idxs:{idxs}, distances:{distances}")
                 for idx2, _ in zip(idxs, distances):
                     predictions.append(
                         (query, language, definitions.iloc[idx2]["identifier"], definitions.iloc[idx2]["url"])
@@ -158,7 +165,26 @@ def run(args, tag_in_vcs=False) -> None:
             del definitions
 
     df = pd.DataFrame(predictions, columns=["query", "language", "identifier", "url"])
-    df.to_csv(training_ctx.output_dir / f"predictions_{training_ctx.training_tokenizer_type}.csv", index=False)
+    # BUT WHY DOESNT IT WORK AS EXPECTED????
+    df["identifier"] = df["identifier"].str.replace(",", "")
+    df["identifier"] = df["identifier"].str.replace('"', "")
+    df["identifier"] = df["identifier"].str.replace(";", "")
+    df.to_csv(training_ctx.output_dir / f"model_predictions_{training_ctx.training_tokenizer_type}.csv", index=False)
+
+    if args_wandb_run_id is not None:
+        logger.info("Uploading predictions to W&B")
+        # upload model predictions CSV file to W&B
+
+        entity, project, name = args_wandb_run_id.split("/")
+
+        # make sure the file is in our cwd, with the correct name
+        predictions_csv = training_ctx.output_dir / f"model_predictions_{training_ctx.training_tokenizer_type}.csv"
+        predictions_base_csv = "model_predictions.csv"
+        shutil.copyfile(predictions_csv, predictions_base_csv)
+
+        # Using internal wandb API. TODO: Update when available as a public API
+        internal_api = InternalApi()
+        internal_api.push([predictions_base_csv], run=name, entity=entity, project=project)
 
 
 if __name__ == "__main__":

@@ -15,10 +15,8 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, NewType
 
 import torch
-from torch import Tensor
 from docopt import docopt
 from dpu_utils.utils import run_and_debug
 from loguru import logger
@@ -27,7 +25,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
 import wandb
 
-from codenets.codesearchnet.dataset import BalancedBatchSchedulerSampler, DatasetType
+from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
 from codenets.save import save_records_best, save_records_last
 from codenets.codesearchnet.training_ctx import (
     CodeSearchTrainingContext,
@@ -160,16 +158,6 @@ def run(args, tag_in_vcs=False) -> None:
     # Build Train Dataloader
     if not conf["training.short_circuit"]:
         train_dataset = training_ctx.build_lang_dataset(DatasetType.TRAIN)
-        # build_lang_dataset_single_code_tokenizer(
-        #     training_ctx.train_dirs,
-        #     f"train_{training_ctx.training_tokenizer_type}",
-        #     training_ctx.train_data_params,
-        #     training_ctx.query_tokenizer,
-        #     training_ctx.code_tokenizer,
-        #     lang_token="<lg>",
-        #     pickle_path=training_ctx.pickle_path,
-        #     parallelize=training_ctx.train_data_params.parallelize,
-        # )
         train_dataloader = DataLoader(
             dataset=train_dataset,
             batch_size=training_ctx.train_batch_size,
@@ -179,16 +167,6 @@ def run(args, tag_in_vcs=False) -> None:
 
     # Build Val Dataloader
     val_dataset = training_ctx.build_lang_dataset(DatasetType.VAL)
-    # build_lang_dataset_single_code_tokenizer(
-    #     training_ctx.val_dirs,
-    #     f"val_{training_ctx.training_tokenizer_type}",
-    #     training_ctx.val_data_params,
-    #     training_ctx.query_tokenizer,
-    #     training_ctx.code_tokenizer,
-    #     lang_token="<lg>",
-    #     pickle_path=training_ctx.pickle_path,
-    #     parallelize=training_ctx.train_data_params.parallelize,
-    # )
     val_dataloader = DataLoader(
         dataset=val_dataset,
         batch_size=training_ctx.val_batch_size,

@@ -16,7 +16,8 @@
 resources/
 !resources/README.md
 !tests/data/
-*.csv
+# *.csv
+!model_predictions.csv
 
 # environment
 *.ftpconfig
@@ -28,3 +29,5 @@ resources/
 
 .mypy_cache
 *.lock
+
+wandb

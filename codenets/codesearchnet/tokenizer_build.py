@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""
+Usage:
+    tokenizers_huggingface_build.py [options]
+    tokenizers_huggingface_build.py [options]
+
+Options:
+    -h --help                        Show this screen.
+    --config FILE                    Specify HOCON config file. [default: ./conf/default.conf]
+    --debug                          Enable debug routines. [default: False]
+"""
+
+
+from docopt import docopt
+from loguru import logger
+import sys
+import torch
+from typing import List
+from dpu_utils.utils import run_and_debug
+from pyhocon import ConfigFactory, ConfigTree
+
+from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, default_sample_update
+from codenets.codesearchnet.dataset_utils import DatasetType
+
+print("Torch version", torch.__version__)  # type: ignore
+
+logger.remove()
+logger.add(sys.stderr, level="DEBUG", colorize=True, backtrace=False)
+
+
+def run_single_code_tokenizer(args, tag_in_vcs=False) -> None:
+    conf_file = args["--config"]
+    logger.info(f"config file {conf_file}")
+
+    conf: ConfigTree = ConfigFactory.parse_file(conf_file)
+    logger.info(f"config {conf}")
+
+    logger.info(f"Build Training Context from config {conf_file}")
+    training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
+
+    def sample_update(tpe: str, lang: str, tokens: List[str]) -> str:
+        if tpe == "code":
+            return f"{lang} <lg> {' '.join(tokens)}\r\n"
+        else:
+            return default_sample_update(tpe, lang, tokens)
+
+    training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN, sample_update=sample_update)
+
+    txt = "python <lg> def toto():"
+    logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))
+    txt = "go <lg> function getCounts() { return 0 }"
+    logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))
+
+
+if __name__ == "__main__":
+    args = docopt(__doc__)
+    run_and_debug(lambda: run_single_code_tokenizer(args), args["--debug"])

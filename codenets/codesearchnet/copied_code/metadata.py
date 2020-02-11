@@ -8,8 +8,8 @@ from dpu_utils.mlutils import Vocabulary
 
 from dpu_utils.utils import RichPath
 
-from codenets.codesearchnet.original.bpevocabulary import BpeVocabulary
-from codenets.codesearchnet.original.utils import run_jobs_in_parallel
+from codenets.codesearchnet.copied_code.bpevocabulary import BpeVocabulary
+from codenets.codesearchnet.copied_code.utils import run_jobs_in_parallel
 
 from dataclasses import dataclass
 from pathlib import Path

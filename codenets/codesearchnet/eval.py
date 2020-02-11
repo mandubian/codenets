@@ -22,32 +22,19 @@ Options:
 """
 
 import os
-from pathlib import Path
-from typing import List, Tuple
 import torch
-import numpy as np
 from docopt import docopt
 from dpu_utils.utils import run_and_debug
 from loguru import logger
-import pandas as pd
-from annoy import AnnoyIndex
-import pickle
 from tqdm import tqdm
 
 from torch.utils.data import DataLoader
 
 # from codenets.codesearchnet.single_branch_ctx import SingleBranchTrainingContext
-from codenets.codesearchnet.dataset import (
-    build_lang_dataset_single_code_tokenizer,
-    BalancedBatchSchedulerSampler,
-    DatasetType,
-)
+from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
 from codenets.codesearchnet.training_ctx import (
     CodeSearchTrainingContext,
     compute_loss_mrr,
-    AvgLoss,
-    AvgMrr,
-    UsedTime,
     TotalLoss,
     TotalMrr,
     TotalSize,

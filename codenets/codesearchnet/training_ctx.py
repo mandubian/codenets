@@ -1,6 +1,6 @@
 import os
 import torch
-from typing import Mapping, cast, Optional, List, TypeVar, Type, Tuple, Union, Generic, NewType, Iterable
+from typing import Mapping, cast, Optional, List, TypeVar, Type, Tuple, Union, Generic, NewType, Iterable, Callable
 from pathlib import Path
 from loguru import logger
 import wandb
@@ -14,16 +14,19 @@ from codenets.recordable import (
     Recordable,
     HoconConfigRecordable,
     DictRecordable,
-    RecordableTorchModule,
     runtime_load_recordable,
 )
 from codenets.codesearchnet.data import DatasetParams
-from codenets.codesearchnet.dataset import LangDataset, DatasetType
-from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
+from codenets.codesearchnet.dataset_utils import LangDataset, DatasetType
 from codenets.utils import expand_data_path, instance_full_classname, full_classname, runtime_import
 from codenets.losses import load_loss_and_similarity_function
 
-Model_T = TypeVar("Model_T", bound="RecordableTorchModule")
+
+def default_sample_update(tpe: str, lang: str, tokens: List[str]) -> str:
+    return " ".join(tokens) + "\r\n"
+
+
+Model_T = TypeVar("Model_T", bound="RecordableTorchModule")  # type: ignore
 ModelAndAdamWRecordable_T = TypeVar("ModelAndAdamWRecordable_T", bound="ModelAndAdamWRecordable")
 
 # Testing Newtypes to force more type safety in code
@@ -256,6 +259,13 @@ class CodeSearchTrainingContext(RecordableMapping):
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        pass
+
+    def build_tokenizers(
+        self,
+        from_dataset_type: DatasetType,
+        sample_update: Callable[[str, str, List[str]], str] = default_sample_update,
+    ) -> bool:
         pass
 
     @classmethod

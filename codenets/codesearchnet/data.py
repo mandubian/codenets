@@ -1,3 +1,5 @@
+# This code is nearly 100% copied from original repo
+
 from dataclasses import dataclass, fields as datafields
 import numpy as np
 
@@ -6,6 +8,8 @@ from typing import Dict, TypeVar, Type, List
 
 @dataclass
 class DatasetParams:
+    """Description of parameters of a CodeSearchnet dataset"""
+
     fraction_using_func_name: float
     min_len_func_name_for_query: int
     use_subtokens: bool
@@ -27,6 +31,8 @@ T_InputFeatures = TypeVar("T_InputFeatures", bound="InputFeatures")
 
 @dataclass
 class InputFeatures:
+    """Structure gathering query and code tokens/mask after passing through tokenizer"""
+
     language: int
     similarity: float
     query_tokens: np.ndarray
@@ -37,9 +43,10 @@ class InputFeatures:
     code_tokens_mask: np.ndarray
     # code_tokens_length: int
 
-    @classmethod
-    def from_dict(cls: Type[T_InputFeatures], dikt) -> T_InputFeatures:
-        return cls(**dikt)
+    # @classmethod
+    # def from_dict(cls: Type[T_InputFeatures], dikt) -> T_InputFeatures:
+    #     """Create an instance of dataclass from a dict
+    #     return cls(**dikt)
 
 
 def dataclass_from_dict(klass, dikt):

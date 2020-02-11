@@ -1,12 +1,7 @@
 from __future__ import annotations
-import os
-from typing import Union
-from pathlib import Path
-from loguru import logger
 from torch import nn
 import torch
 from codenets.recordable import RecordableTorchModule
-from codenets.utils import full_classname, instance_full_classname
 
 
 class EmbeddingPooler(RecordableTorchModule):

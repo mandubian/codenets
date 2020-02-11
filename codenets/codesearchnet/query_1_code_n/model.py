@@ -13,7 +13,7 @@ from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable, load_query_code_tokenizers_from_hocon
 from codenets.losses import load_loss_and_similarity_function
 from codenets.codesearchnet.poolers import MeanWeightedPooler
-from codenets.codesearchnet.huggingface import PreTrainedModelRecordable
+from codenets.codesearchnet.huggingface.models import PreTrainedModelRecordable
 from codenets.recordable import (
     HoconConfigRecordable,
     Recordable,
@@ -28,7 +28,7 @@ from codenets.utils import full_classname, instance_full_classname, expand_data_
 from pyhocon import ConfigTree
 
 
-class MultiBranchCodeSearchModel(RecordableTorchModule):
+class Query1CodeN(RecordableTorchModule):
     """
     A generic Pytorch Model with:
     - one single-branch query encoder
@@ -42,7 +42,7 @@ class MultiBranchCodeSearchModel(RecordableTorchModule):
         code_encoders: RecordableTorchModuleMapping,
         pooler: Optional[RecordableTorchModule] = None,
     ):
-        super(MultiBranchCodeSearchModel, self).__init__()
+        super(Query1CodeN, self).__init__()
         self.code_encoders = code_encoders
         self.query_encoder = query_encoder
         self.pooler = pooler
@@ -58,7 +58,7 @@ class MultiBranchCodeSearchModel(RecordableTorchModule):
         return save_recordable_mapping(output_dir=d, records=records)
 
     @classmethod
-    def load(cls, restore_dir: Union[Path, str]) -> MultiBranchCodeSearchModel:
+    def load(cls, restore_dir: Union[Path, str]) -> Query1CodeN:
         d = Path(restore_dir) / full_classname(cls)
         records = runtime_load_recordable_mapping(d)
         return cls(**records)
@@ -100,8 +100,8 @@ class MultiBranchCodeSearchModel(RecordableTorchModule):
             return code_seq_outputs[1]
 
 
-def multibranch_bert_from_hocon(config: ConfigTree) -> MultiBranchCodeSearchModel:
-    """Load MultiBranchCodeSearchModel from a config tree"""
+def multibranch_bert_from_hocon(config: ConfigTree) -> Query1CodeN:
+    """Load Query1CodeN from a config tree"""
 
     lang_ids = config["lang_ids"]
     query_config = BertConfig(**config["bert"])
@@ -114,7 +114,7 @@ def multibranch_bert_from_hocon(config: ConfigTree) -> MultiBranchCodeSearchMode
         lang_idx = lang_ids[language]
         code_encoders[str(lang_idx)] = module
 
-    model = MultiBranchCodeSearchModel(
+    model = Query1CodeN(
         query_encoder=query_encoder,
         code_encoders=RecordableTorchModuleMapping(code_encoders),
         pooler=MeanWeightedPooler(input_size=query_config.hidden_size),
@@ -123,9 +123,9 @@ def multibranch_bert_from_hocon(config: ConfigTree) -> MultiBranchCodeSearchMode
     return model
 
 
-class MultiBranchCodeSearchModelAndAdamW(Recordable):
+class Query1CodeNAndAdamW(Recordable):
     """
-    Recordable for MultiBranchCodeSearchModel + Optimizer due to the fact
+    Recordable for Query1CodeN + Optimizer due to the fact
     that the optimizer can't be recovered without its model params... so 
     we need to load both together or it's no generic.
     It is linked to optimizer AdamW because it's impossible to load
@@ -135,29 +135,29 @@ class MultiBranchCodeSearchModelAndAdamW(Recordable):
     To be continued
     """
 
-    def __init__(self, model: MultiBranchCodeSearchModel, optimizer: AdamW):  # type: ignore
+    def __init__(self, model: Query1CodeN, optimizer: AdamW):  # type: ignore
         super().__init__()
         self.model = model
         self.optimizer = optimizer
 
     def save(self, output_dir: Union[Path, str]) -> bool:
         full_dir = Path(output_dir) / instance_full_classname(self)
-        logger.debug(f"Saving MultiBranchCodeSearchModel & AdamW optimizer to {full_dir}")
+        logger.debug(f"Saving Query1CodeN & AdamW optimizer to {full_dir}")
         os.makedirs(full_dir, exist_ok=True)
         self.model.save(full_dir)
         torch.save(self.optimizer.state_dict(), full_dir / "adamw_state_dict.pth")
         return True
 
     @classmethod
-    def load(cls, restore_dir: Union[Path, str]) -> MultiBranchCodeSearchModelAndAdamW:
+    def load(cls, restore_dir: Union[Path, str]) -> Query1CodeNAndAdamW:
         full_dir = Path(restore_dir) / full_classname(cls)
-        logger.debug(f"Loading MultiBranchCodeSearchModel & AdamW optimizer from {full_dir}")
-        model = MultiBranchCodeSearchModel.load(full_dir)
+        logger.debug(f"Loading Query1CodeN & AdamW optimizer from {full_dir}")
+        model = Query1CodeN.load(full_dir)
 
         state_dict = torch.load(full_dir / "adamw_state_dict.pth")
         optimizer = AdamW(model.parameters())
         optimizer.load_state_dict(state_dict)
-        return MultiBranchCodeSearchModelAndAdamW(model, optimizer)
+        return Query1CodeNAndAdamW(model, optimizer)
 
 
 class MultiBranchTrainingContext(RecordableMapping):
@@ -198,7 +198,7 @@ class MultiBranchTrainingContext(RecordableMapping):
         self.query_tokenizer = cast(TokenizerRecordable, records["query_tokenizer"])
         self.code_tokenizers = cast(Dict[str, TokenizerRecordable], records["code_tokenizers"])
 
-        model_optimizer_rec = cast(MultiBranchCodeSearchModelAndAdamW, records["model_optimizer"])
+        model_optimizer_rec = cast(Query1CodeNAndAdamW, records["model_optimizer"])
         self.model = model_optimizer_rec.model
         self.model = self.model.to(device=self.device)
         self.optimizer = model_optimizer_rec.optimizer
@@ -247,7 +247,7 @@ class MultiBranchTrainingContext(RecordableMapping):
         records = {
             "config": HoconConfigRecordable(conf),
             # need to pair model and optimizer as optimizer need it to be reloaded
-            "model_optimizer": MultiBranchCodeSearchModelAndAdamW(model, optimizer),
+            "model_optimizer": Query1CodeNAndAdamW(model, optimizer),
             "query_tokenizer": query_tokenizer,
             "code_tokenizers": code_tokenizers,
             "training_params": DictRecordable(

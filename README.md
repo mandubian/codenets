@@ -20,10 +20,10 @@ The current code is a ~80% rewrite of the original [Github repository](https://g
 
 - Dataset loading & parsing is independent from Tensorflow and memory optimized (original repo couldn't fit in my 32GB CPU RAM)
 - Support of Pytorch,
-- Support of Huggingface transformers pretrained & non-pretrained ([Sample of Bert from scratch](./codenets/codesearchnet/multi_branch_model.py#L103-L123))
-- Support of Huggingface Rust tokenizers and training them ([Sample of tokenizer training](./codenets/codesearchnet/tokenizer_recs.py#L425-L452)),
-- Mostly typed Python (with Mypy) ([sample code](./codenets/codesearchnet/multi_branch_model.py)),
-- experimental typesafe "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries) ([a sample recordable Pytorch model](./codenets/codesearchnet/multi_branch_model.py#L31-L64) and [a full recordable training context](https://github.com/mandubian/codenets/blob/master/codenets/codesearchnet/multi_branch_model.py#L163-L265))
+- Support of Huggingface transformers pretrained & non-pretrained ([Sample of Bert from scratch](./codenets/codesearchnet/query_1_code_1/model.py#L111-L126))
+- Support of Huggingface Rust tokenizers and training them ([Sample of tokenizer training](./codenets/codesearchnet/query_1_code_1/training_ctx.py#L226-L250)),
+- Mostly typed Python (with Mypy) ([sample code](./codenets/blob/master/codenets/recordable.py#L190-L213)),
+- experimental typesafe "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries) ([a sample recordable Pytorch model](./codenets/blob/master/codenets/codesearchnet/query_1_code_1/model.py#L33-L66) and [a full recordable training context](./codenets/blob/master/codenets/codesearchnet/query_1_code_1/model.py#L33-L66))
 - HOCON configuration for full models and trainings ([sample config](./conf/default.conf)),
 - Poetry Python dependencies management with isolated virtualenv.
 

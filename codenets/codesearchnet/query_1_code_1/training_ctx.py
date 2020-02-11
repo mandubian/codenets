@@ -47,20 +47,6 @@ class Query1Code1ModelAndAdamW(ModelAndAdamWRecordable):
         super(Query1Code1ModelAndAdamW, self).__init__(model, optimizer)
 
 
-# def build_huggingface_bpetokenizers_from_hocon(
-#     conf: ConfigTree,
-#     from_dataset_type="train",
-#     sample_update: Callable[[str, str, List[str]], str] = default_sample_update,
-# ) -> Tuple[TokenizerRecordable, TokenizerRecordable]:
-#     dirs = expand_data_path(conf[f"dataset.{from_dataset_type}.dirs"])
-#     train_data_params = DatasetParams(**conf[f"dataset.{from_dataset_type}.params"])
-#     build_path = conf["tokenizers.build_path"]
-
-#     return build_huggingface_bpetokenizers(
-#         dirs=dirs, data_params=train_data_params, output_path=build_path, sample_update=sample_update
-#     )
-
-
 class Query1Code1Ctx(CodeSearchTrainingContext):
     def __init__(self, records: Mapping[str, Recordable]):
         super(Query1Code1Ctx, self).__init__(records)

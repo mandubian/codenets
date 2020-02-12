@@ -25,6 +25,18 @@ class Recordable:
         pass
 
 
+class NoneRecordable(Recordable):
+    def __init__(self):
+        super(NoneRecordable, self).__init__()
+
+    def save(self, output_dir: Union[Path, str]) -> bool:
+        return True
+
+    @classmethod
+    def load(cls, restore_dir: Union[Path, str]) -> "NoneRecordable":
+        return NoneRecordable()
+
+
 Module_T = TypeVar("Module_T", bound="nn.Module")
 
 

@@ -38,13 +38,7 @@ def run_single_code_tokenizer(args, tag_in_vcs=False) -> None:
     logger.info(f"Build Training Context from config {conf_file}")
     training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
 
-    def sample_update(tpe: str, lang: str, tokens: List[str]) -> str:
-        if tpe == "code":
-            return f"{lang} <lg> {' '.join(tokens)}\r\n"
-        else:
-            return default_sample_update(tpe, lang, tokens)
-
-    training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN, sample_update=sample_update)
+    training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
 
     txt = "python <lg> def toto():"
     logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))

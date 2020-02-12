@@ -13,23 +13,22 @@ from transformers import AdamW
 from pyhocon import ConfigTree
 from tokenizers import BPETokenizer
 from tokenizers.normalizers import BertNormalizer
-from codenets.recordable import Recordable, RecordableMapping
+from codenets.recordable import Recordable, RecordableMapping, NoneRecordable
 from codenets.codesearchnet.dataset_utils import LangDataset
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, DatasetType
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
-from codenets.codesearchnet.training_ctx import ModelAndAdamWRecordable, default_sample_update
+from codenets.codesearchnet.training_ctx import ModelAndAdamWRecordable
 
-# from codenets.codesearchnet.tokenizer_recs import load_query_code_tokenizers_from_hocon_single_code_tokenizer
-from codenets.codesearchnet.query_1_code_1.model import Query1Code1
-from codenets.codesearchnet.query_1_code_1.dataset import build_lang_dataset_single_code_tokenizer
+from codenets.codesearchnet.query_code_siamese.model import QueryCodeSiamese
+from codenets.codesearchnet.query_code_siamese.dataset import build_lang_dataset_siamese_tokenizer
 from codenets.codesearchnet.huggingface.tokenizer_recs import (
     HuggingfaceBPETokenizerRecordable,
     build_huggingface_token_files,
 )
 
 
-class Query1Code1ModelAndAdamW(ModelAndAdamWRecordable):
+class QueryCodeSiameseModelAndAdamW(ModelAndAdamWRecordable):
     """
     Recordable for Query1Code1ModelAndAdamW + Optimizer due to the fact
     that the optimizer can't be recovered without its model params... so
@@ -41,20 +40,20 @@ class Query1Code1ModelAndAdamW(ModelAndAdamWRecordable):
     To be continued
     """
 
-    model_type = Query1Code1
+    model_type = QueryCodeSiamese
 
-    def __init__(self, model: Query1Code1, optimizer: AdamW):
-        super(Query1Code1ModelAndAdamW, self).__init__(model, optimizer)
+    def __init__(self, model: QueryCodeSiamese, optimizer: AdamW):
+        super(QueryCodeSiameseModelAndAdamW, self).__init__(model, optimizer)
 
 
-class Query1Code1Ctx(CodeSearchTrainingContext):
+class QueryCodeSiameseCtx(CodeSearchTrainingContext):
     def __init__(self, records: Mapping[str, Recordable]):
-        super(Query1Code1Ctx, self).__init__(records)
+        super(QueryCodeSiameseCtx, self).__init__(records)
         self.tokenizers_build_path = Path(self.conf["tokenizers.build_path"])
-        self.query_tokenizer = cast(TokenizerRecordable, records["query_tokenizer"])
-        self.code_tokenizer = cast(TokenizerRecordable, records["code_tokenizer"])
+        self.tokenizers_token_files = Path(self.conf["tokenizers.token_files"])
+        self.tokenizer = cast(TokenizerRecordable, records["tokenizer"])
 
-        model_optimizer_rec = cast(Query1Code1ModelAndAdamW, records["model_optimizer"])
+        model_optimizer_rec = cast(QueryCodeSiameseModelAndAdamW, records["model_optimizer"])
         self.model = model_optimizer_rec.model
         self.model = self.model.to(device=self.device)
         self.optimizer = model_optimizer_rec.optimizer
@@ -64,24 +63,26 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         self.optimizer.load_state_dict(self.optimizer.state_dict())
 
     @classmethod
-    def from_hocon_custom(cls: Type["Query1Code1Ctx"], conf: ConfigTree) -> Mapping[str, Recordable]:
+    def from_hocon_custom(cls: Type["QueryCodeSiameseCtx"], conf: ConfigTree) -> Mapping[str, Recordable]:
         res = load_tokenizers_from_hocon(conf)
+        tokenizer: Recordable
         if res is not None:
-            query_tokenizer, code_tokenizer = res
+            tokenizer = res
         else:
-            raise ValueError("Couldn't load Tokenizers from conf")
+            tokenizer = NoneRecordable()
+        # else:
+        #     raise ValueError("Couldn't load Tokenizers from conf")
 
         device = torch.device(conf["training.device"])
-        model = Query1Code1.from_hocon(conf)
+        model = QueryCodeSiamese.from_hocon(conf)
         model = model.to(device=device)
 
         optimizer = AdamW(model.parameters(), lr=conf["training.lr"], correct_bias=False)
 
         records = {
             # need to pair model and optimizer as optimizer need it to be reloaded
-            "model_optimizer": Query1Code1ModelAndAdamW(model, optimizer),
-            "query_tokenizer": query_tokenizer,
-            "code_tokenizer": code_tokenizer,
+            "model_optimizer": QueryCodeSiameseModelAndAdamW(model, optimizer),
+            "tokenizer": tokenizer,
         }
 
         return records
@@ -144,17 +145,17 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
     def tokenize_query_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        return self.query_tokenizer.encode_sentences(sentences, max_length)
+        return self.tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        return self.code_tokenizer.encode_sentences(sentences, max_length)
+        return self.tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        return self.code_tokenizer.encode_tokens(tokens, max_length)
+        return self.tokenizer.encode_tokens(tokens, max_length)
 
     def build_lang_dataset(self, dataset_type: DatasetType) -> LangDataset:
         """Build language dataset using custom training context tokenizers"""
@@ -173,13 +174,13 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
             name = f"test_{self.training_tokenizer_type}"
             data_params = self.test_data_params
 
-        return build_lang_dataset_single_code_tokenizer(
+        return build_lang_dataset_siamese_tokenizer(
             dirs=dirs,
             name=name,
             data_params=data_params,
-            query_tokenizer=self.query_tokenizer,
-            code_tokenizer=self.code_tokenizer,
+            tokenizer=self.tokenizer,
             lang_token="<lg>",
+            query_token="<qy>",
             pickle_path=self.pickle_path,
             parallelize=self.train_data_params.parallelize,
         )
@@ -198,90 +199,86 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         def sample_update(tpe: str, lang: str, tokens: List[str]) -> str:
             if tpe == "code":
                 return f"{lang} <lg> {' '.join(tokens)}\r\n"
+            elif tpe == "query":
+                return f"<qy> {' '.join(tokens)}\r\n"
             else:
-                return default_sample_update(tpe, lang, tokens)
+                raise ValueError("tpe can be 'code' or 'query'")
 
         build_huggingface_bpetokenizers(
-            dirs=dirs, data_params=data_params, output_path=self.tokenizers_build_path, sample_update=sample_update
+            dirs=dirs,
+            data_params=data_params,
+            build_path=self.tokenizers_build_path,
+            token_path=self.tokenizers_token_files,
+            sample_update=sample_update,
         )
         return True
 
 
-def load_tokenizers_from_hocon(conf: ConfigTree) -> Optional[Tuple[TokenizerRecordable, TokenizerRecordable]]:
+def load_tokenizers_from_hocon(conf: ConfigTree) -> Optional[TokenizerRecordable]:
     build_path = Path(conf["tokenizers.build_path"])
 
     if not os.path.exists(build_path):
-        logger.error(f"Could find {build_path} where tokenizers should have been built and stored")
+        logger.error(
+            f"Couldn't find {build_path} where tokenizers should have been built and stored... returning None tokenizer"
+        )
         return None
 
     records = RecordableMapping.load(build_path)
-    if "query_tokenizer" in records and "code_tokenizer" in records:
-        query_tokenizer = cast(TokenizerRecordable, records["query_tokenizer"])
-        code_tokenizer = cast(TokenizerRecordable, records["code_tokenizer"])
+    if "tokenizer" in records:
+        tokenizer = cast(TokenizerRecordable, records["tokenizer"])
 
-        return query_tokenizer, code_tokenizer
+        return tokenizer
     else:
-        logger.error(f"Couldn't query_tokenizer/code_tokenizer recordables in path {build_path}")
+        logger.error(f"Couldn't 'tokenizer' recordables in path {build_path}")
         return None
 
 
 def train_huggingface_bpetokenizers(
     data_params: DatasetParams, query_files: List[Path], lang_files: Dict[str, Path]
-) -> Tuple[TokenizerRecordable, TokenizerRecordable]:
+) -> TokenizerRecordable:
     logger.info(
-        f"Building Query BPETokenizer from query_files {query_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
+        f"Building Siamese BPETokenizer from query_files {query_files} and lang_files {lang_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
     )
-    query_tokenizer = BPETokenizer()
-    query_tokenizer.normalizer = BertNormalizer.new(
+    tokenizer = BPETokenizer()
+    tokenizer.normalizer = BertNormalizer.new(
         clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
     )
-    query_tokenizer.train(
-        files=list(map(str, query_files)), vocab_size=data_params.vocab_size, special_tokens=data_params.special_tokens
-    )
-
-    code_tokenizer = BPETokenizer()
-    code_tokenizer.normalizer = BertNormalizer.new(
-        clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
-    )
-    code_tokenizer.train(
-        files=list(map(str, lang_files.values())),
+    tokenizer.train(
+        files=list(map(str, query_files + list(lang_files.values()))),
         vocab_size=data_params.vocab_size,
         special_tokens=data_params.special_tokens,
     )
 
-    return HuggingfaceBPETokenizerRecordable(query_tokenizer), HuggingfaceBPETokenizerRecordable(code_tokenizer)
+    return HuggingfaceBPETokenizerRecordable(tokenizer)
 
 
 def build_huggingface_bpetokenizers(
     dirs: List[Path],
     data_params: DatasetParams,
-    output_path: Union[str, Path] = ".",
-    sample_update: Callable[[str, str, List[str]], str] = default_sample_update,
-) -> Tuple[TokenizerRecordable, TokenizerRecordable]:
-    output_path = Path(output_path)
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    sample_update: Callable[[str, str, List[str]], str],
+    build_path: Union[str, Path],
+    token_path: Union[str, Path],
+) -> TokenizerRecordable:
     start = time.time()
 
-    query_files, lang_files = build_huggingface_token_files(dirs, data_params, output_path, sample_update)
-    query_tokenizer, code_tokenizer = train_huggingface_bpetokenizers(data_params, query_files, lang_files)
-    query_tokenizer_rec = HuggingfaceBPETokenizerRecordable(query_tokenizer)
-    code_tokenizer_rec = HuggingfaceBPETokenizerRecordable(code_tokenizer)
+    query_files, lang_files = build_huggingface_token_files(dirs, data_params, token_path, sample_update)
+    tokenizer = train_huggingface_bpetokenizers(data_params, query_files, lang_files)
     end = time.time()
 
     time_p = end - start
-    logger.info(f"query_tokenizer/code_tokenizer trainings took: {time_p} sec")
+    logger.info(f"tokenizer trainings took: {time_p} sec")
 
-    records = RecordableMapping({"query_tokenizer": query_tokenizer_rec, "code_tokenizer": code_tokenizer_rec})
-    records.save(output_path)
+    os.makedirs(build_path, exist_ok=True)
+    records = RecordableMapping({"tokenizer": tokenizer})
+    records.save(build_path)
 
     # testing query_tokenizer
     txt = "This is a docstring".lower()
-    encoded_ids, mask = query_tokenizer.encode_sentence(txt)
-    logger.debug(f"encoded_ids {encoded_ids.tokens}")
-    decoded = query_tokenizer.decode_sequence(encoded_ids.ids)
+    encoded_ids, mask = tokenizer.encode_sentence(txt)
+    logger.debug(f"encoded_ids {encoded_ids}")
+    decoded = tokenizer.decode_sequence(encoded_ids)
     logger.debug(f"decoded {decoded}")
     logger.debug(f"txt {txt}")
     # assert decoded == txt
 
-    return query_tokenizer_rec, code_tokenizer_rec
+    return tokenizer

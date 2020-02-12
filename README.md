@@ -20,12 +20,12 @@ The current code is a ~80% rewrite of the original [Github repository](https://g
 
 - Dataset loading & parsing is independent from Tensorflow and memory optimized (original repo couldn't fit in my 32GB CPU RAM)
 - Support of Pytorch,
-- Support of Huggingface transformers pretrained & non-pretrained ([Sample of Bert from scratch](./codenets/codesearchnet/query_1_code_1/model.py#L111-L126))
-- Support of Huggingface Rust tokenizers and training them ([Sample of tokenizer training](./codenets/codesearchnet/query_1_code_1/training_ctx.py#L226-L250)),
-- Mostly typed Python (with Mypy) ([sample code](./codenets/blob/master/codenets/recordable.py#L190-L213)),
-- experimental typesafe "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries) ([a sample recordable Pytorch model](./codenets/blob/master/codenets/codesearchnet/query_1_code_1/model.py#L33-L66) and [a full recordable training context](./codenets/blob/master/codenets/codesearchnet/query_1_code_1/model.py#L33-L66))
-- HOCON configuration for full models and trainings ([sample config](./conf/default.conf)),
-- Poetry Python dependencies management with isolated virtualenv.
+- Support of Huggingface transformers pretrained & non-pretrained: [Sample of Bert from scratch](./codenets/codesearchnet/query_1_code_1/model.py#L111-L126)
+- Support of Huggingface Rust tokenizers and training them: [Sample of tokenizer training](./codenets/codesearchnet/query_1_code_1/training_ctx.py#L226-L250),
+- Mostly typed Python (with Mypy) ([sample code](./codenets/recordable.py#L13-L25)),
+- experimental typesafe "typeclass-like helpers" to save/load full Training heterogenous contexts (models, optimizers, tokenizers, configuration using different libraries): [a sample recordable Pytorch model](./codenets/codesearchnet/query_1_code_1/model.py#L33-L66) and [a full recordable training context](./codenets/codesearchnet/query_1_code_1/model.py#L33-L66))
+- HOCON configuration for full models and trainings: [sample config](./conf/default.conf)),
+- Poetry Python dependencies management with isolated virtualenv ([Poetry config](./pyproject.toml).
 
 
 
@@ -68,39 +68,45 @@ Now you should be in a console with your virtualenv environment and all your cus
 
 ### Training model
 
-1. Write a HOCON configuration for your training
+#### Write your HOCON configuration for your training
 
 - Copy a configuration file from `conf` directory and modify it according to your needs.
-- Take care to give a `training.name` to your experiment and a unique `training.iteration` to your current run.
+- Take care to give a `training.name` to your experiment and a unique `training.iteration` to your current run. You can have several `training.iteration` for one `training.name`.
 
 - Choose a training context class
 
 ```
-# Query1Code1: Single Bert query encoder, Single Bert encoders
+# Query1Code1: Single Bert query encoder+tokenizer, Single Bert encoder+tokenizer for all coding languages
 training_ctx_class = "codenets.codesearchnet.query_1_code_1.training_ctx.Query1Code1Ctx"
 
-# Query1CodeN: Single Bert query encoder, Multiple Bert encoders
+# Query1CodeN: Single Bert query encoder+tokenizer, Single encoder+tokenizer per language
 training_ctx_class = "codenets.codesearchnet.query_1_code_1.training_ctx.Query1CodeNCtx"
+
+# QueryCodeSiamese: Single Bert encoder+tokenizer for query and coding languages
+training_ctx_class = "codenets.codesearchnet.query_code_siamese.training_ctx.QueryCodeSiamese"
 ```
 
-2. Train Tokenizers in this training context
+#### Train Tokenizers in this training context
 
 ```sh
-python codenets/codesearchnet/tokenizer_build.py --config ./conf/my_conf_file.conf
+python codenets/codesearchnet/tokenizer_build.py --config ./conf/MY_CONF_FILE.conf
 ```
-3. Train Model
+
+#### Train Model
 
 ```sh
-python codenets/codesearchnet/train.py --config ./conf/my_conf_file.conf
+python codenets/codesearchnet/train.py --config ./conf/MY_CONF_FILE.conf
 ```
 
-4. Eval Model
+> It should store your pickles in `training.pickle_path` and your checkpoints in `training.checkpoint_path`.
+
+#### Eval Model
 
 ```sh
 python codenets/codesearchnet/eval.py --restore ./checkpoints/YOUR_RUN_DIRECTORY
 ```
 
-5. Build Benchmark predictions
+#### Build Benchmark predictions
 
 ```sh
 python codenets/codesearchnet/predictions.py --restore ./checkpoints/YOUR_RUN_DIRECTORY
@@ -109,13 +115,23 @@ python codenets/codesearchnet/predictions.py --restore ./checkpoints/YOUR_RUN_DI
 
 ### Models
 
-#### Query1CodeN: Single Bert query encoder, Multiple Bert encoders (one encoder per language)
+#### Query1CodeN
+
+- 1 Bert query Encoder + Rust Tokenizer
+- N Bert code Encoder + Rust Tokenizer (1 per language)
 
 _Incoming_
 
 #### Query1Code1: Single Bert query encoder, Single Bert encoder for all languages
 
+- 1 Bert query Encoder + Rust Tokenizer
+- 1 Bert code Encoder + Rust Tokenizer for all languages
+
 _Incoming_
+
+#### QueryCodeSiamese: Single Bert query encoder, Single Bert encoder for all languages
+
+- 1 Bert Encoder + Rust Tokenizer for queries and all languages
 
 
 ### HOCON configuration

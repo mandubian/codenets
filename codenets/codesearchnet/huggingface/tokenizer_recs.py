@@ -173,10 +173,10 @@ class HuggingfaceBPETokenizerRecordable(TokenizerRecordable):
 def build_huggingface_token_files(
     data_dirs: List[Path],
     data_params: DatasetParams,
-    output_path: Path,
+    output_path: Union[Path, str],
     sample_update: Callable[[str, str, List[str]], str] = default_sample_update,
 ) -> Tuple[List[Path], Dict[str, Path]]:
-    tokenizers_path = Path(output_path) / "huggingface_token_files"
+    tokenizers_path = Path(output_path)
     os.makedirs(tokenizers_path, exist_ok=True)
     # build files of strings
     lang_ios: Dict[str, Tuple[IO[str], IO[str]]] = {}

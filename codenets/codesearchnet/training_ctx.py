@@ -261,11 +261,7 @@ class CodeSearchTrainingContext(RecordableMapping):
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         pass
 
-    def build_tokenizers(
-        self,
-        from_dataset_type: DatasetType,
-        sample_update: Callable[[str, str, List[str]], str] = default_sample_update,
-    ) -> bool:
+    def build_tokenizers(self, from_dataset_type: DatasetType) -> bool:
         pass
 
     @classmethod

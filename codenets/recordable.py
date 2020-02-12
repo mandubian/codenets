@@ -1,3 +1,5 @@
+"""The Recordable Typeclass-like or behavior-like Python interface"""
+
 import json
 import os
 import shutil
@@ -18,10 +20,12 @@ class Recordable:
     """A recordable is something that be saved or loaded from a directory"""
 
     def save(self, output_dir: Union[Path, str]) -> bool:
+        """Save an instance of recordable to a directory"""
         pass
 
     @classmethod
     def load(cls: Type[Recordable_T], restore_dir: Union[Path, str]) -> Recordable_T:
+        """Load an instance of Class cls that is recordable from a restore directory"""
         pass
 
 

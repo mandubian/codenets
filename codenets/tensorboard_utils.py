@@ -1,3 +1,5 @@
+# Some
+
 from tensorboardX import SummaryWriter
 from pathlib import Path
 import datetime
@@ -8,13 +10,14 @@ from tensorboard.backend.event_processing import event_accumulator
 
 
 def tensorboard_event_accumulator(
-    file,
-    loaded_scalars=0,  # load all scalars by default
-    loaded_images=4,  # load 4 images by default
-    loaded_compressed_histograms=500,  # load one histogram by default
-    loaded_histograms=1,  # load one histogram by default
-    loaded_audio=4,  # loads 4 audio by default
+    file: str,
+    loaded_scalars: int = 0,  # load all scalars by default
+    loaded_images: int = 4,  # load 4 images by default
+    loaded_compressed_histograms: int = 500,  # load one histogram by default
+    loaded_histograms: int = 1,  # load one histogram by default
+    loaded_audio: int = 4,  # loads 4 audio by default
 ):
+    """Read a Tensorboard event_accumulator from a file"""
     ea = event_accumulator.EventAccumulator(
         file,
         size_guidance={  # see below regarding this argument
@@ -30,6 +33,17 @@ def tensorboard_event_accumulator(
 
 
 class Tensorboard:
+    """
+    Tensorboard manager
+
+    This manager is associated to a:
+
+    - experiment
+    - a unique ID for the current run (one experiment can be run many times)
+    - groups of metrics (like "train" or "val")
+    - sub-groups of metrics (like train/bash or val/epoch)
+    """
+
     def __init__(self, experiment_id, output_dir="./runs", unique_id=None, flush_secs=10):
         self.experiment_id = experiment_id
         self.output_dir = Path(output_dir)

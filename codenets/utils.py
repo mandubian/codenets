@@ -28,15 +28,10 @@ def runtime_import(class_name: str):
     components = class_name.split(".")
     mod = getattr(importlib.import_module(".".join(components[:-1])), components[-1])
     return mod
-    # components = class_name.split(".")
-    # mod = __import__(components[0])
-    # for comp in components[1:]:
-    #     mod = getattr(mod, comp)
-    #     print("mod", mod)
-    # return mod
 
 
 def full_classname(cls):
+    """Return full class name with modules"""
     return cls.__module__ + "." + cls.__name__
 
 
@@ -55,6 +50,7 @@ def instance_full_classname(o):
 
 
 def _to_subtoken_stream(input_stream: Iterable[str], mark_subtoken_end: bool) -> Iterable[str]:
+    """Generator of chopped strings into sub-tokens strings (like snake-case)"""
     for token in input_stream:
         if IDENTIFIER_TOKEN_REGEX.match(token):
             yield from split_identifier_into_parts(token)
@@ -66,6 +62,8 @@ def _to_subtoken_stream(input_stream: Iterable[str], mark_subtoken_end: bool) ->
 
 def expand_data_path(data_path: str) -> List[Path]:
     """
+    Expand data path as a simple directory or if a file, searches for directories in the file
+
     Args:
         data_path: A path to either a file or a directory. If it's a file, we interpret it as a list of
             data directories.
@@ -91,6 +89,7 @@ def expand_data_path(data_path: str) -> List[Path]:
 
 
 def get_data_files_from_directory(data_dirs: List[Path], max_files_per_dir: Optional[int] = None) -> List[Path]:
+    """Search all *.jsonl.gz files in a multiple paths and concatenate them"""
     files: List[Path] = []
     for data_dir in data_dirs:
         dir_files = [Path(path) for path in glob.iglob(os.path.join(data_dir, "*.jsonl.gz"), recursive=True)]
@@ -101,6 +100,9 @@ def get_data_files_from_directory(data_dirs: List[Path], max_files_per_dir: Opti
 
     np.random.shuffle(files)  # This avoids having large_file_0, large_file_1, ... subsequences
     return files
+
+
+# Some streaming pickles (not used)
 
 
 def stream_dump(iterable_to_pickle, file_obj):

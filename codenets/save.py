@@ -1,3 +1,5 @@
+"""Utils to save Recordables in rotating mode"""
+
 import os
 from pathlib import Path
 import shutil

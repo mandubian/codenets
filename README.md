@@ -1,6 +1,8 @@
 # CodeNets
 
-> My own playground to play with PLP (Programming Language Processing) datasets & Deep Learning
+> Code is currently under heavy work so it's not stable but all the principles are there.
+
+_My own playground to play with PLP (Programming Language Processing) datasets & Deep Learning_
 
 In this repository, I want to study **_PLP_, programming languages processing** (searching, modifying, generating, translating my code...) using AI techniques like Deep Learning.
 

@@ -120,6 +120,8 @@ python codenets/codesearchnet/predictions.py --restore ./checkpoints/YOUR_RUN_DI
 - 1 Bert query Encoder + Rust Tokenizer
 - N Bert code Encoder + Rust Tokenizer (1 per language)
 
+##### Metrics
+
 _Incoming_
 
 #### Query1Code1: Single Bert query encoder, Single Bert encoder for all languages
@@ -127,12 +129,17 @@ _Incoming_
 - 1 Bert query Encoder + Rust Tokenizer
 - 1 Bert code Encoder + Rust Tokenizer for all languages
 
+##### Metrics
+
 _Incoming_
 
 #### QueryCodeSiamese: Single Bert query encoder, Single Bert encoder for all languages
 
 - 1 Bert Encoder + Rust Tokenizer for queries and all languages
 
+##### Metrics
+
+_Incoming_
 
 ### HOCON configuration
 

@@ -15,7 +15,10 @@ Pretrained_T = TypeVar("Pretrained_T", bound="PreTrainedModel")
 
 
 class PreTrainedModelRecordable(Generic[Pretrained_T], RecordableTorchModule):
-    """Wrap PreTrainedModel"""
+    """
+    Wrap any generic HuggingFace PreTrainedModel as a Recordable Torch module
+    equipped with load/save
+    """
 
     def __init__(self, model: Pretrained_T):
         super().__init__()

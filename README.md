@@ -29,7 +29,11 @@ The current code is a ~80% rewrite of the original [Github repository](https://g
 - HOCON configuration for full models and trainings: [sample config](./conf/default.conf)),
 - Poetry Python dependencies management with isolated virtualenv ([Poetry config](./pyproject.toml).
 
+## Trainings
 
+I'm currently experimenting different models & runs are recorded on W&B
+
+https://app.wandb.ai/mandubian/codenets
 
 ## Next potential Studies
 

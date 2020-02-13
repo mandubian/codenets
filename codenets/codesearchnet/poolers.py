@@ -38,7 +38,7 @@ class MeanPooler(EmbeddingPooler):
 
 
 class MeanWeightedPooler(EmbeddingPooler):
-    def __init__(self, input_size: int = 128, eps: float = 1e-8):  # default params required for module construction
+    def __init__(self, input_size: int = 512, eps: float = 1e-8):  # default params required for module construction
         super().__init__()
         self.dense = nn.Linear(input_size, 1, bias=False)
         self.activation = nn.Sigmoid()

@@ -51,17 +51,25 @@ class RecordableTorchModule(nn.Module, Recordable):
         full_dir = Path(output_dir) / instance_full_classname(self)
         logger.debug(f"Saving {instance_full_classname(self)} instance to {full_dir}")
         os.makedirs(full_dir, exist_ok=True)
-        torch.save(self.state_dict(), full_dir / "state_dict.pth")
+        # torch.save(self.state_dict(), full_dir / "state_dict.pth")
+        torch.save(self, full_dir / "model.bin")
         return True
 
     @classmethod
     def load(cls: Type[Module_T], restore_dir: Union[Path, str]) -> Module_T:
         full_dir = Path(restore_dir) / full_classname(cls)
         logger.debug(f"Loading {full_classname(cls)} from {full_dir}")
-        state_dict = torch.load(full_dir / "state_dict.pth")
-        module = cls()
-        module.load_state_dict(state_dict)
-        return module
+        if (full_dir / "state_dict.pth").exists():
+            # for compatibility with previous version using state_dict
+            # but not good as default params would need to be loaded
+            # I need to rework that...
+            state_dict = torch.load(full_dir / "state_dict.pth")
+            module = cls()
+            module.load_state_dict(state_dict)
+            return module
+        else:
+            module = torch.load(full_dir / "model.bin")
+            return module
 
 
 def runtime_load_recordable(dir: Union[Path, str]) -> Recordable:

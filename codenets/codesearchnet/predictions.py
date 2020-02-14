@@ -53,13 +53,23 @@ def compute_code_encodings_from_defs(
 
     def_file = root_data_path / f"data/{language}_dedupe_definitions_v2.pkl"
     definitions_df = pd.DataFrame(pd.read_pickle(open(def_file, "rb"), compression=None))
+    cols_to_remove = list(definitions_df.columns.difference(["function_tokens", "identifier", "url"]))
+    for col in cols_to_remove:
+        del definitions_df[col]
+    # definitions_df.drop(cols_to_remove, inplace=True, axis=1)
+    logger.debug(f"definitions_df {definitions_df.columns}")
+
     if not os.path.exists(h5_file):
         logger.info(f"Building encodings of code from {def_file}")
 
-        function_tokens = definitions_df["function_tokens"]
+        # function_tokens = definitions_df["function_tokens"]
         # add language and lang_token (<lg>) to tokens
-        function_tokens = function_tokens.apply(lambda row: [language, lang_token] + row)
-        function_tokens_batch = function_tokens.groupby(np.arange(len(function_tokens)) // batch_length)
+        definitions_df["function_tokens"] = definitions_df["function_tokens"].apply(
+            lambda row: [language, lang_token] + row
+        )
+        function_tokens_batch = definitions_df["function_tokens"].groupby(
+            np.arange(len(definitions_df["function_tokens"])) // batch_length
+        )
 
         code_embeddings = []
         for g, df_batch in tqdm(function_tokens_batch):
@@ -83,6 +93,9 @@ def compute_code_encodings_from_defs(
             if g < 2:
                 logger.debug(f"emb_df {emb_df.head()}")
             code_embeddings.append(emb_df)
+
+        # free memory or it explodes on 32GB...
+        del definitions_df["function_tokens"]
 
         code_embeddings_df = pd.concat(code_embeddings)
 
@@ -121,7 +134,7 @@ def run(args, tag_in_vcs=False) -> None:
     training_ctx = CodeSearchTrainingContext.build_context_from_dir(restore_dir)
 
     queries = pd.read_csv(training_ctx.queries_file)
-    queries = list(queries["query"].values)
+    queries = list(map(lambda q: f"<qy> {q}", queries["query"].values))
     queries_tokens, queries_masks = training_ctx.tokenize_query_sentences(
         queries, max_length=training_ctx.conf["dataset.common_params.query_max_num_tokens"]
     )
@@ -140,9 +153,11 @@ def run(args, tag_in_vcs=False) -> None:
         logger.info(f"query_embeddings: {query_embeddings.shape}")
 
         topk = 100
-        predictions = []
         language_token = "<lg>"
-        for language in ("python", "go", "javascript", "java", "php", "ruby"):
+        for lang_idx, language in enumerate(
+            ("javascript", "java", "php", "ruby")
+        ):  # in enumerate(("python", "go", "javascript", "java", "php", "ruby")):
+            predictions = []
             # (codes_encoded_df, codes_masks_df, definitions) = get_language_defs(language, training_ctx, language_token)
 
             code_embeddings, definitions = compute_code_encodings_from_defs(language, training_ctx, language_token)
@@ -161,15 +176,23 @@ def run(args, tag_in_vcs=False) -> None:
                     )
 
             logger.info(f"predictions {predictions[0]}")
+
+            df = pd.DataFrame(predictions, columns=["query", "language", "identifier", "url"])
+            # BUT WHY DOESNT IT WORK AS EXPECTED????
+            df["query"] = df["query"].str.replace("<qy> ", "")
+            df["identifier"] = df["identifier"].str.replace(",", "")
+            df["identifier"] = df["identifier"].str.replace('"', "")
+            df["identifier"] = df["identifier"].str.replace(";", "")
+            df.to_csv(
+                training_ctx.output_dir / f"model_predictions_{training_ctx.training_tokenizer_type}.csv",
+                index=False,
+                header=True if lang_idx == 0 else False,
+                mode="a",  # "w" if lang_idx == 0 else "a",
+            )
+            # Free memory
             del code_embeddings
             del definitions
-
-    df = pd.DataFrame(predictions, columns=["query", "language", "identifier", "url"])
-    # BUT WHY DOESNT IT WORK AS EXPECTED????
-    df["identifier"] = df["identifier"].str.replace(",", "")
-    df["identifier"] = df["identifier"].str.replace('"', "")
-    df["identifier"] = df["identifier"].str.replace(";", "")
-    df.to_csv(training_ctx.output_dir / f"model_predictions_{training_ctx.training_tokenizer_type}.csv", index=False)
+            del predictions
 
     if args_wandb_run_id is not None:
         logger.info("Uploading predictions to W&B")

@@ -1,4 +1,4 @@
-# from __future__ import annotations
+from __future__ import annotations
 from torch import nn
 
 import torch
@@ -100,5 +100,7 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
 def load_loss_and_similarity_function(loss_config: ConfigTree, device: torch.device) -> LossAndSimilarityScore:
     if loss_config["type"] == "softmax_cross_entropy":
         return LogSoftmaxLossAndSimilarityScore(device, loss_config["margin"])
+    elif loss_config["type"] == "cosine_similarity":
+        return CosineSimilarityScoreAndMarginLoss(device, loss_config["margin"])
     else:
         raise ValueError("loss.type can be softmax_cross_entropy or ...")

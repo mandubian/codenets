@@ -123,7 +123,7 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         Returns:
             Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, losses per sample in batch, tensor matrix of similarity scores between all samples)
         """
-        languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask = [
+        languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, code_lang_weights = [
             t.to(self.device) for t in batch
         ]
         (query_embedding, code_embedding) = self.model(
@@ -133,8 +133,10 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
             code_tokens=code_tokens,
             code_tokens_mask=code_tokens_mask,
         )
-        per_sample_losses, similarity_scores = self.losses_scores_fn(query_embedding, code_embedding, similarity)
-        avg_loss = torch.mean(per_sample_losses)
+        per_sample_losses, similarity_scores = self.losses_scores_fn(
+            query_embedding, code_embedding, similarity, code_lang_weights
+        )
+        avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
 
         return (avg_loss, per_sample_losses, similarity_scores)
 

@@ -14,7 +14,14 @@ from codenets.utils import _to_subtoken_stream, get_data_files_from_directory
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.copied_code.utils import read_file_samples
-from codenets.codesearchnet.dataset_utils import Samples, LangDataset
+from codenets.codesearchnet.dataset_utils import (
+    Samples,
+    LangDataset,
+    Compose,
+    InputFeaturesToNpArray_RandomReplace,
+    Tensorize,
+    compute_language_weightings,
+)
 from codenets.codesearchnet.copied_code.metadata import QueryType
 from codenets.codesearchnet.data import InputFeatures
 
@@ -114,7 +121,7 @@ def load_data_from_sample_siamese(
         result_holder[f"{encoder_label}_tokens_mask_{QueryType.DOCSTRING.value}"] is None
         or int(np.sum(result_holder[f"{encoder_label}_tokens_mask_{QueryType.DOCSTRING.value}"])) == 0
     ):
-        return result_holder
+        return None
 
     return result_holder
 
@@ -245,29 +252,44 @@ def build_lang_dataset_siamese_tokenizer(
     tokenizer: TokenizerRecordable,
     lang_token: str,
     query_token: str,
+    fraction_using_func_name: float,
+    query_random_token_frequency: float,
+    common_tokens: Dict[int, List[int]],  # list of token ID
+    use_lang_weights: bool,
+    lang_ids: Dict[str, int],
     pickle_path=".",
     parallelize: bool = False,
 ) -> LangDataset:
     def build_input_features_from_dict(sample: Dict[str, Union[str, int, np.ndarray]]) -> InputFeatures:
         """Build InputFeature from Dict by randomizing between using docstring or function name for query"""
-        if random.uniform(0.0, 1.0) < data_params.fraction_using_func_name:
-            return InputFeatures(
-                language=data_params.lang_ids[cast(str, sample["language"])],
-                similarity=cast(int, sample["similarity"]),
-                query_tokens=sample["query_tokens_func_name_as_query"],
-                query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
-                code_tokens=sample["code_tokens_func_name_as_query"],
-                code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
-            )
-        else:
-            return InputFeatures(
-                language=data_params.lang_ids[cast(str, sample["language"])],
-                similarity=cast(int, sample["similarity"]),
-                query_tokens=sample["query_tokens_docstring_as_query"],
-                query_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
-                code_tokens=sample["code_tokens_docstring_as_query"],
-                code_tokens_mask=sample["code_tokens_mask_docstring_as_query"],
-            )
+        # if random.uniform(0.0, 1.0) < data_params.fraction_using_func_name:
+        #     return InputFeatures(
+        #         language=data_params.lang_ids[cast(str, sample["language"])],
+        #         similarity=cast(int, sample["similarity"]),
+        #         query_tokens=sample["query_tokens_func_name_as_query"],
+        #         query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
+        #         code_tokens=sample["code_tokens_func_name_as_query"],
+        #         code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
+        #     )
+        # else:
+        #     return InputFeatures(
+        #         language=data_params.lang_ids[cast(str, sample["language"])],
+        #         similarity=cast(int, sample["similarity"]),
+        #         query_tokens=sample["query_tokens_docstring_as_query"],
+        #         query_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
+        #         code_tokens=sample["code_tokens_docstring_as_query"],
+        #         code_tokens_mask=sample["code_tokens_mask_docstring_as_query"],
+        #     )
+        return InputFeatures(
+            language=data_params.lang_ids[cast(str, sample["language"])],
+            similarity=cast(int, sample["similarity"]),
+            query_tokens=sample["query_tokens_func_name_as_query"],
+            query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
+            query_docstring_tokens=sample["query_tokens_docstring_as_query"],
+            query_docstring_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
+            code_tokens=sample["code_tokens_func_name_as_query"],
+            code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
+        )
 
     def parser(
         data_file: Path, data_params: DatasetParams, tokenizer: TokenizerRecordable
@@ -283,6 +305,7 @@ def build_lang_dataset_siamese_tokenizer(
 
     pickle_file = Path(pickle_path) / f"{name}_samples.p"
     loaded_samples: Dict[str, Tuple[int, Iterable[InputFeatures]]]
+
     if os.path.exists(pickle_file):
         logger.debug(f"Loading dataset {name} raw samples from pickled {pickle_file}")
         loaded_samples = pickle.load(open(pickle_file, "rb"))
@@ -299,7 +322,22 @@ def build_lang_dataset_siamese_tokenizer(
         pickle.dump(loaded_samples, open(pickle_file, "wb"))
         logger.debug(f"Pickled dataset {name} [{nb} raw samples] to {pickle_file}")
 
-    # logger.debug(f"Samples {loaded_samples['python'][:2]}")
-    dataset = LangDataset(loaded_samples, lang_ids=data_params.lang_ids)
+    lang_weights = compute_language_weightings(loaded_samples, lang_ids)
+    logger.debug(f"lang_weights {lang_weights}")
+
+    transform = Compose(
+        [
+            InputFeaturesToNpArray_RandomReplace(
+                lang_weights=lang_weights,
+                fraction_using_func_name=fraction_using_func_name,
+                query_random_token_frequency=query_random_token_frequency,
+                common_tokens=common_tokens,
+            ),
+            Tensorize(),
+        ]
+    )
+    dataset = LangDataset(
+        loaded_samples, lang_ids=data_params.lang_ids, transform=transform, use_lang_weights=use_lang_weights
+    )
     logger.debug(f"Loaded {name} lang dataset [{len(dataset)} samples]")
     return dataset

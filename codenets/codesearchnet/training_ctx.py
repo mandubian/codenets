@@ -113,6 +113,8 @@ class CodeSearchTrainingContext(RecordableMapping):
     def __init__(self, records: Mapping[str, Recordable]):
         super(CodeSearchTrainingContext, self).__init__(records)
 
+        logger.info("Loading CodeSearchTrainingContext")
+
         # we need to cast elements back to their type when reading from records
         # so that mypy can help us again... from outside our world to inside of it
         self.conf = cast(HoconConfigRecordable, records["config"]).config
@@ -126,6 +128,9 @@ class CodeSearchTrainingContext(RecordableMapping):
         self.epochs = self.conf["training.epochs"]
         self.min_log_interval = self.conf["training.min_log_interval"]
         self.max_grad_norm = self.conf["training.max_grad_norm"]
+
+        self.tokenizers_build_path = Path(self.conf["tokenizers.build_path"])
+        self.tokenizers_token_files = Path(self.conf["tokenizers.token_files"])
 
         self.pickle_path = Path(self.conf["training.pickle_path"])
         self.tensorboard_activated = self.conf["training.tensorboard"]
@@ -160,9 +165,6 @@ class CodeSearchTrainingContext(RecordableMapping):
         self.test_batch_size: int = self.conf["training.batch_size.test"]
 
         self.queries_file = self.conf["dataset.queries_file"]
-
-        # self.query_tokenizer = cast(TokenizerRecordable, records["query_tokenizer"])
-        # self.code_tokenizer = cast(TokenizerRecordable, records["code_tokenizer"])
 
         self.losses_scores_fn = load_loss_and_similarity_function(self.conf["training.loss"], self.device)
 
@@ -265,7 +267,9 @@ class CodeSearchTrainingContext(RecordableMapping):
         pass
 
     @classmethod
-    def build_context_from_hocon(cls, conf: ConfigTree) -> "CodeSearchTrainingContext":
+    def build_context_from_hocon(
+        cls: Type[CodeSearchTrainingContext_T], conf: ConfigTree
+    ) -> CodeSearchTrainingContext_T:
         """
         Build Training Context from Hocon config field training.model.training_clx_class
         Class is loaded at runtime because we can't know it before reading the configuration.
@@ -278,7 +282,7 @@ class CodeSearchTrainingContext(RecordableMapping):
         return klass.from_hocon(conf)
 
     @classmethod
-    def build_context_from_dir(cls, dir: Path) -> "CodeSearchTrainingContext":
+    def build_context_from_dir(cls: Type[CodeSearchTrainingContext_T], dir: Path) -> CodeSearchTrainingContext_T:
         """
         Build Training Context from recorded directory
         Class is loaded at runtime because we can't know it before reading the configuration.
@@ -286,6 +290,23 @@ class CodeSearchTrainingContext(RecordableMapping):
         Returns:
             CodeSearchTrainingContext_T: A instance of a training context subclass of CodeSearchTrainingContext (or crashes)
         """
-        ctx = runtime_load_recordable(dir)
-        assert isinstance(ctx, CodeSearchTrainingContext)
+        ctx = cast(CodeSearchTrainingContext_T, runtime_load_recordable(dir))
         return ctx
+
+    @classmethod
+    def merge_contexts(
+        cls: Type[CodeSearchTrainingContext_T],
+        fresh_ctx: CodeSearchTrainingContext_T,
+        restored_ctx: CodeSearchTrainingContext_T,
+    ) -> CodeSearchTrainingContext_T:
+        pass
+
+    @classmethod
+    def build_context_from_hocon_and_dir(
+        cls: Type[CodeSearchTrainingContext_T], conf: ConfigTree, dir: Path
+    ) -> CodeSearchTrainingContext_T:
+        klass = runtime_import(conf["training.model.training_ctx_class"])
+        assert issubclass(klass, CodeSearchTrainingContext)
+        ctx1 = klass.build_context_from_hocon(conf)
+        ctx2 = klass.build_context_from_dir(dir)
+        return klass.merge_contexts(ctx1, ctx2)

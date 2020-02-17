@@ -13,7 +13,8 @@ from transformers import AdamW
 from pyhocon import ConfigTree
 from tokenizers import BPETokenizer
 from tokenizers.normalizers import BertNormalizer
-from codenets.recordable import Recordable, RecordableMapping, NoneRecordable
+from tokenizers.trainers import BpeTrainer
+from codenets.recordable import Recordable, RecordableMapping, NoneRecordable, DictRecordable
 from codenets.codesearchnet.dataset_utils import LangDataset
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, DatasetType
@@ -49,9 +50,14 @@ class QueryCodeSiameseModelAndAdamW(ModelAndAdamWRecordable):
 class QueryCodeSiameseCtx(CodeSearchTrainingContext):
     def __init__(self, records: Mapping[str, Recordable]):
         super(QueryCodeSiameseCtx, self).__init__(records)
-        self.tokenizers_build_path = Path(self.conf["tokenizers.build_path"])
-        self.tokenizers_token_files = Path(self.conf["tokenizers.token_files"])
+        logger.info("Loading QueryCodeSiameseCtx")
+        # TODO manage the NoneRecordable case or not?
         self.tokenizer = cast(TokenizerRecordable, records["tokenizer"])
+        self.common_tokens: Optional[DictRecordable]
+        if "common_tokens" in records:
+            self.common_tokens = cast(DictRecordable, records["common_tokens"])
+        else:
+            self.common_tokens = None
 
         model_optimizer_rec = cast(QueryCodeSiameseModelAndAdamW, records["model_optimizer"])
         self.model = model_optimizer_rec.model
@@ -64,14 +70,8 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
 
     @classmethod
     def from_hocon_custom(cls: Type["QueryCodeSiameseCtx"], conf: ConfigTree) -> Mapping[str, Recordable]:
-        res = load_tokenizers_from_hocon(conf)
-        tokenizer: Recordable
-        if res is not None:
-            tokenizer = res
-        else:
-            tokenizer = NoneRecordable()
-        # else:
-        #     raise ValueError("Couldn't load Tokenizers from conf")
+        tokenizer = load_tokenizers_from_hocon(conf)
+        common_tokens = load_common_tokens_from_hocon(conf)
 
         device = torch.device(conf["training.device"])
         model = QueryCodeSiamese.from_hocon(conf)
@@ -83,6 +83,7 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
             # need to pair model and optimizer as optimizer need it to be reloaded
             "model_optimizer": QueryCodeSiameseModelAndAdamW(model, optimizer),
             "tokenizer": tokenizer,
+            "common_tokens": common_tokens,
         }
 
         return records
@@ -110,7 +111,7 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
         Returns:
             Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, losses per sample in batch, tensor matrix of similarity scores between all samples)
         """
-        languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask = [
+        languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, code_lang_weights = [
             t.to(self.device) for t in batch
         ]
         (query_embedding, code_embedding) = self.model(
@@ -119,9 +120,12 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
             query_tokens_mask=query_tokens_mask,
             code_tokens=code_tokens,
             code_tokens_mask=code_tokens_mask,
+            lang_weights=code_lang_weights,
         )
-        per_sample_losses, similarity_scores = self.losses_scores_fn(query_embedding, code_embedding, similarity)
-        avg_loss = torch.mean(per_sample_losses)
+        per_sample_losses, similarity_scores = self.losses_scores_fn(
+            query_embedding, code_embedding, similarity, code_lang_weights
+        )
+        avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
 
         return (avg_loss, per_sample_losses, similarity_scores)
 
@@ -159,20 +163,33 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
 
     def build_lang_dataset(self, dataset_type: DatasetType) -> LangDataset:
         """Build language dataset using custom training context tokenizers"""
+        common_toks: Dict[int, List[int]]
+
         if dataset_type == DatasetType.TRAIN:
             dirs = self.train_dirs
             name = f"train_{self.training_tokenizer_type}"
             data_params = self.train_data_params
-
+            common_toks = {}
+            if self.common_tokens is not None:
+                for lang, toks in self.common_tokens.items():
+                    lang_idx = data_params.lang_ids[lang]
+                    lang_toks = [tok for tok, _ in toks]
+                    lang_toks_idss, _ = self.tokenize_query_sentences(lang_toks)
+                    tok_ids: List[int] = []
+                    for lang_toks_ids in lang_toks_idss:
+                        tok_ids.extend(lang_toks_ids.tolist())
+                    common_toks[lang_idx] = tok_ids
         elif dataset_type == DatasetType.VAL:
             dirs = self.val_dirs
             name = f"val_{self.training_tokenizer_type}"
             data_params = self.val_data_params
+            common_toks = {}
 
         elif dataset_type == DatasetType.TEST:
             dirs = self.test_dirs
             name = f"test_{self.training_tokenizer_type}"
             data_params = self.test_data_params
+            common_toks = {}
 
         return build_lang_dataset_siamese_tokenizer(
             dirs=dirs,
@@ -181,6 +198,11 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
             tokenizer=self.tokenizer,
             lang_token="<lg>",
             query_token="<qy>",
+            fraction_using_func_name=data_params.fraction_using_func_name,
+            query_random_token_frequency=data_params.query_random_token_frequency,
+            common_tokens=common_toks,
+            use_lang_weights=data_params.use_lang_weights,
+            lang_ids=data_params.lang_ids,
             pickle_path=self.pickle_path,
             parallelize=self.train_data_params.parallelize,
         )
@@ -213,15 +235,24 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
         )
         return True
 
+    @classmethod
+    def merge_contexts(
+        cls, fresh_ctx: "QueryCodeSiameseCtx", restored_ctx: "QueryCodeSiameseCtx"
+    ) -> "QueryCodeSiameseCtx":
+        logger.debug("MERGE_CONTEXTS")
+        fresh_ctx.model = restored_ctx.model
+        fresh_ctx.tokenizer = restored_ctx.tokenizer
+        return fresh_ctx
 
-def load_tokenizers_from_hocon(conf: ConfigTree) -> Optional[TokenizerRecordable]:
+
+def load_tokenizers_from_hocon(conf: ConfigTree) -> Recordable:
     build_path = Path(conf["tokenizers.build_path"])
 
     if not os.path.exists(build_path):
         logger.error(
             f"Couldn't find {build_path} where tokenizers should have been built and stored... returning None tokenizer"
         )
-        return None
+        return NoneRecordable()
 
     records = RecordableMapping.load(build_path)
     if "tokenizer" in records:
@@ -229,8 +260,27 @@ def load_tokenizers_from_hocon(conf: ConfigTree) -> Optional[TokenizerRecordable
 
         return tokenizer
     else:
-        logger.error(f"Couldn't 'tokenizer' recordables in path {build_path}")
-        return None
+        logger.error(f"Couldn't find 'tokenizer' recordables in path {build_path}")
+        return NoneRecordable()
+
+
+def load_common_tokens_from_hocon(conf: ConfigTree) -> Recordable:
+    build_path = Path(conf["tokenizers.build_path"])
+    if not os.path.exists(build_path):
+        logger.error(
+            f"Couldn't find {build_path} where tokenizers should have been built and stored... returning None tokenizer"
+        )
+        return NoneRecordable()
+
+    records = RecordableMapping.load(build_path)
+
+    if "common_tokens" in records:
+        common_tokens = cast(DictRecordable, records["common_tokens"])
+
+        return common_tokens
+    else:
+        logger.error(f"Couldn't find 'common_tokens' recordables in path {build_path}")
+        return NoneRecordable()
 
 
 def train_huggingface_bpetokenizers(
@@ -248,7 +298,6 @@ def train_huggingface_bpetokenizers(
         vocab_size=data_params.vocab_size,
         special_tokens=data_params.special_tokens,
     )
-
     return HuggingfaceBPETokenizerRecordable(tokenizer)
 
 

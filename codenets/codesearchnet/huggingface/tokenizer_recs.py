@@ -130,8 +130,8 @@ class HuggingfaceBPETokenizerRecordable(TokenizerRecordable):
             for enc in encs:
                 enc.truncate(max_length)
                 enc.pad(max_length)
-        tokens_ids = np.array([enc.ids for enc in encs])
-        attention_mask = np.array([enc.attention_mask for enc in encs])
+        tokens_ids = [np.array(enc.ids) for enc in encs]
+        attention_mask = [np.array(enc.attention_mask) for enc in encs]
         return (tokens_ids, attention_mask)
 
     def encode_tokens(

@@ -6,7 +6,7 @@ Usage:
 
 Options:
     -h --help                        Show this screen.
-    --config FILE                    Specify HOCON config file. [default: ../conf/default.conf]
+    --config FILE                    Specify HOCON config file.
     --restore DIR                    specify restoration dir. [optional]
     --debug                          Enable debug routines. [default: False]
 """
@@ -141,22 +141,41 @@ def run(args, tag_in_vcs=False) -> None:
     logger.debug("Building Training Context")
     training_ctx: CodeSearchTrainingContext
     print("args", args)
-    if args["--restore"] is not None:
-        restore_dir = args["--restore"]
-        logger.info(f"Restoring Training Context from directory{restore_dir}")
-        training_ctx = CodeSearchTrainingContext.build_context_from_dir(restore_dir)
-    else:
+    conf: ConfigTree
+    if args["--restore"] is not None and args["--config"] is not None:
         conf_file = args["--config"]
         logger.info(f"Config file: {conf_file}")
 
-        conf: ConfigTree = ConfigFactory.parse_file(conf_file)
+        conf = ConfigFactory.parse_file(conf_file)
+        logger.info(f"Config {conf}")
+
+        restore_dir = args["--restore"]
+
+        logger.info(f"Build Training Context from config {conf_file} and dir {restore_dir}")
+        training_ctx = CodeSearchTrainingContext.build_context_from_hocon_and_dir(conf, restore_dir)
+
+    elif args["--restore"] is not None:
+        conf = None
+        restore_dir = args["--restore"]
+        logger.info(f"Restoring Training Context from directory{restore_dir}")
+        training_ctx = CodeSearchTrainingContext.build_context_from_dir(restore_dir)
+
+    elif args["--config"] is not None:
+        conf_file = args["--config"]
+        logger.info(f"Config file: {conf_file}")
+
+        conf = ConfigFactory.parse_file(conf_file)
         logger.info(f"Config {conf}")
 
         logger.info(f"Build Training Context from config {conf_file}")
         training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
 
+    else:
+        logger.error("need --config or --restore at least")
+        sys.exit(1)
+
     # Build Train Dataloader
-    if not conf["training.short_circuit"]:
+    if conf is None or not conf["training.short_circuit"]:
         train_dataset = training_ctx.build_lang_dataset(DatasetType.TRAIN)
         train_dataloader = DataLoader(
             dataset=train_dataset,
@@ -181,9 +200,14 @@ def run(args, tag_in_vcs=False) -> None:
                 prefix="train",
                 epoch=epoch,
                 training_ctx=training_ctx,
-                dataloader=train_dataloader if not conf["training.short_circuit"] else val_dataloader,
+                dataloader=train_dataloader if (conf is None or not conf["training.short_circuit"]) else val_dataloader,
                 log_interval=max(
-                    int(len(train_dataloader if not conf["training.short_circuit"] else val_dataloader) / 100),
+                    int(
+                        len(
+                            train_dataloader if (conf is None or not conf["training.short_circuit"]) else val_dataloader
+                        )
+                        / 100
+                    ),
                     training_ctx.min_log_interval,
                 ),
                 is_train=True,

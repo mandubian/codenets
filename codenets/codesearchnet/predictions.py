@@ -155,7 +155,7 @@ def run(args, tag_in_vcs=False) -> None:
         topk = 100
         language_token = "<lg>"
         for lang_idx, language in enumerate(
-            ("javascript", "java", "php", "ruby")
+            ("python", "go", "javascript", "java", "php", "ruby")
         ):  # in enumerate(("python", "go", "javascript", "java", "php", "ruby")):
             predictions = []
             # (codes_encoded_df, codes_masks_df, definitions) = get_language_defs(language, training_ctx, language_token)
@@ -187,7 +187,7 @@ def run(args, tag_in_vcs=False) -> None:
                 training_ctx.output_dir / f"model_predictions_{training_ctx.training_tokenizer_type}.csv",
                 index=False,
                 header=True if lang_idx == 0 else False,
-                mode="a",  # "w" if lang_idx == 0 else "a",
+                mode="w" if lang_idx == 0 else "a",
             )
             # Free memory
             del code_embeddings

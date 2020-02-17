@@ -63,6 +63,7 @@ class QueryCodeSiamese(RecordableTorchModule):
         query_tokens_mask: np.ndarray,
         code_tokens: np.ndarray,
         code_tokens_mask: np.ndarray,
+        lang_weights: np.ndarray,
     ):
         # lang_id = str(languages[0].item())
         query_seq_outputs = self.encoder(query_tokens, query_tokens_mask)  # [B x S x H]

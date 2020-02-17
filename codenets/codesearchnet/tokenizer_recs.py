@@ -16,7 +16,7 @@ from typing import IO
 import time
 
 from pyhocon import ConfigTree
-from codenets.recordable import Recordable, instance_full_classname, full_classname, RecordableMapping
+from codenets.recordable import Recordable, instance_full_classname, full_classname, RecordableMapping, DictRecordable
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.copied_code.metadata import Metadata, append_metadata, build_tokenizer_metadata
 
@@ -128,6 +128,60 @@ class BpeVocabularyTokenizerRecordable(TokenizerRecordable):
 
     def decode_sequences(self, tokens_sequences: Iterable[List[int]]) -> List[str]:
         return list(self.vocab.inverse_transform(tokens_sequences))
+
+
+def build_most_common_tokens(
+    data_dirs: List[Path],
+    data_params: DatasetParams,
+    build_path: Path,
+    max_files_per_dir: Optional[int] = None,
+    parallelize: bool = True,
+) -> Dict[str, List[Tuple[str, int]]]:
+
+    start = time.time()
+
+    logger.info(f"Build metadata for {data_dirs}")
+
+    query_metadata_lists, code_language_metadata_lists = build_tokenizer_metadata(
+        data_dirs=data_dirs,
+        max_files_per_dir=max_files_per_dir,
+        parallelize=parallelize,
+        use_subtokens=data_params.use_subtokens,
+        mark_subtoken_end=data_params.mark_subtoken_end,
+    )
+
+    logger.info(f"Merging metadata")
+
+    # merge metadata if necessary
+    per_code_language_metadata: Dict[str, Metadata] = {}
+    for (language, raw_per_language_metadata) in code_language_metadata_lists.items():
+        logger.info(f"Build vocabulary for {language}")
+        per_code_language_metadata[language] = append_metadata(
+            "code",
+            vocab_size=data_params.vocab_size,
+            vocab_count_threshold=data_params.vocab_count_threshold,
+            use_bpe=data_params.use_bpe,
+            pct_bpe=data_params.pct_bpe,
+            raw_metadata_list=raw_per_language_metadata,
+        )
+    common_tokens: Dict[str, List[Tuple[str, int]]] = {}
+    for (language, md) in per_code_language_metadata.items():
+        common_tokens[language] = md.common_tokens
+
+    end = time.time()
+
+    time_p = end - start
+    logger.info(f"Most Common Tokens: {time_p} sec")
+
+    pickle.dump(common_tokens, open("./checkpoints/tmp_common_tokens.p", "wb"))
+
+    common_tokens_dict = DictRecordable(common_tokens)
+    os.makedirs(build_path, exist_ok=True)
+    records = RecordableMapping({"common_tokens": common_tokens_dict})
+    records.save(build_path)
+
+    # pickle.dump(common_tokens, open(checkpoint_file, "wb"))
+    return common_tokens_dict
 
 
 def build_original_tokenizers(

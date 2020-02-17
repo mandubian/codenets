@@ -9,7 +9,7 @@ from typing import Tuple
 
 class LossAndSimilarityScore(nn.Module):
     def forward(  # type: ignore
-        self, x1: torch.Tensor, x2: torch.Tensor, ground_similarity: torch.Tensor
+        self, x1: torch.Tensor, x2: torch.Tensor, ground_similarity: torch.Tensor, code_lang_weights: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Compute Loss and similarity score between x1 and x2
@@ -39,7 +39,11 @@ class CosineSimilarityScoreAndMarginLoss(LossAndSimilarityScore):
         self.eps = eps
 
     def forward(  # type: ignore
-        self, query_embeddings: torch.Tensor, code_embeddings: torch.Tensor, ground_similarity: torch.Tensor
+        self,
+        query_embeddings: torch.Tensor,
+        code_embeddings: torch.Tensor,
+        ground_similarity: torch.Tensor,
+        code_lang_weights: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         cos_sims = cosine_similarities(query_embeddings, code_embeddings)  # B x B
         similarity_scores = cos_sims
@@ -47,6 +51,8 @@ class CosineSimilarityScoreAndMarginLoss(LossAndSimilarityScore):
         best_wrongs, _ = torch.max(torch.relu(cos_sims + z), dim=-1)  # B x 1
         m = torch.tensor(self.margin).to(self.device) - cos_sims.diagonal() + best_wrongs  # B x 1
         per_sample_losses = torch.relu(m)  # B x1
+
+        per_sample_losses = per_sample_losses * code_lang_weights
 
         return per_sample_losses, similarity_scores  # B x 1, B x 1
 
@@ -58,17 +64,23 @@ class SoftmaxCrossEntropyLossAndSimilarityScore(LossAndSimilarityScore):
         self.margin = margin
 
     def forward(  # type: ignore
-        self, query_embeddings: torch.Tensor, code_embeddings: torch.Tensor, ground_similarity: torch.Tensor
+        self,
+        query_embeddings: torch.Tensor,
+        code_embeddings: torch.Tensor,
+        ground_similarity: torch.Tensor,
+        code_lang_weights: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         logits = torch.mm(query_embeddings, code_embeddings.t())  # B x B
         similarity_scores = logits
-        per_sample_loss = torch.nn.functional.cross_entropy(
+        per_sample_losses = torch.nn.functional.cross_entropy(
             input=logits.to(self.device),
             target=torch.arange(0, code_embeddings.size()[0]).to(self.device),
             reduction="none",
         )
 
-        return per_sample_loss, similarity_scores
+        per_sample_losses = per_sample_losses * code_lang_weights
+
+        return per_sample_losses, similarity_scores
 
 
 class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
@@ -78,7 +90,11 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
         self.margin = margin
 
     def forward(  # type: ignore
-        self, query_embeddings: torch.Tensor, code_embeddings: torch.Tensor, ground_similarity: torch.Tensor
+        self,
+        query_embeddings: torch.Tensor,
+        code_embeddings: torch.Tensor,
+        ground_similarity: torch.Tensor,
+        code_lang_weights: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # basic vector product
         logits = torch.mm(query_embeddings, code_embeddings.t())  # B x B
@@ -92,9 +108,11 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
         best_wrongs, _ = torch.max(torch.relu(logprobs + z), dim=-1)  # B
 
         m = torch.tensor(self.margin).to(self.device) - logprobs.diagonal() + best_wrongs  # B
-        per_sample_loss = torch.relu(m)
+        per_sample_losses = torch.relu(m)
 
-        return per_sample_loss, similarity_scores
+        per_sample_losses = per_sample_losses * code_lang_weights
+
+        return per_sample_losses, similarity_scores
 
 
 def load_loss_and_similarity_function(loss_config: ConfigTree, device: torch.device) -> LossAndSimilarityScore:

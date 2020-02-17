@@ -24,6 +24,8 @@ class DatasetParams:
     do_lowercase: bool
     special_tokens: List[str]
     parallelize: bool
+    use_lang_weights: bool = False  # for backward compat
+    query_random_token_frequency: float = 0.2
 
 
 T_InputFeatures = TypeVar("T_InputFeatures", bound="InputFeatures")
@@ -37,11 +39,12 @@ class InputFeatures:
     similarity: float
     query_tokens: np.ndarray
     query_tokens_mask: np.ndarray
-    # query_tokens_length: int
+
+    query_docstring_tokens: np.ndarray
+    query_docstring_tokens_mask: np.ndarray
 
     code_tokens: np.ndarray
     code_tokens_mask: np.ndarray
-    # code_tokens_length: int
 
     # @classmethod
     # def from_dict(cls: Type[T_InputFeatures], dikt) -> T_InputFeatures:

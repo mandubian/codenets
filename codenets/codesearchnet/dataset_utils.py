@@ -4,10 +4,10 @@
 
 from abc import abstractmethod
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Iterator
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Iterator, Callable
 
 import numpy as np
-
+import random
 import torch
 from torch.utils.data import Dataset, TensorDataset, ConcatDataset, RandomSampler, Sampler
 
@@ -145,6 +145,214 @@ class ConcatNamedDataset(Dataset):
         pass
 
 
+class FeatsDataset(Dataset):
+    def __init__(self, samples: List[InputFeatures], transform: Callable[[InputFeatures], List[torch.Tensor]]):
+        self.samples = samples
+        self.transform = transform
+
+    def __len__(self):
+        """Get dataset length"""
+        return len(self.samples)
+
+    def __getitem__(self, idx) -> List[torch.Tensor]:
+        """Get dataset item by idx"""
+        s = self.transform(self.samples[idx])
+        return s
+
+
+class InputFeaturesToNpArray(object):
+    def __init__(self, lang_weights: Optional[Dict[int, float]]):
+        self.lang_weights = lang_weights
+
+    def __call_(self, features: Iterable[InputFeatures]):
+        all_query_tokens = [f.query_tokens for f in features]
+        all_query_tokens_mask = [f.query_tokens_mask for f in features]
+        all_code_tokens = [f.code_tokens for f in features]
+        all_code_tokens_mask = [f.code_tokens_mask for f in features]
+        all_languages = [f.language for f in features]
+        all_similarity = [f.similarity for f in features]
+        if self.lang_weights is not None:
+            all_lang_weights = [self.lang_weights[f.language] for f in features]
+        else:
+            all_lang_weights = [1.0 for _ in features]
+        return (
+            all_languages,
+            all_similarity,
+            all_query_tokens,
+            all_query_tokens_mask,
+            all_code_tokens,
+            all_code_tokens_mask,
+            all_lang_weights,
+        )
+
+
+# class InputFeaturesToNpArray_RandomReplace(object):
+#     def __init__(
+#         self,
+#         lang_weights: Optional[Dict[int, float]],
+#         fraction_using_func_name: float,
+#         query_random_token_frequency: float,
+#         common_tokens: List[int],
+#     ):
+#         self.lang_weights = lang_weights
+#         self.fraction_using_func_name = fraction_using_func_name
+#         self.query_random_token_frequency = query_random_token_frequency
+#         self.common_tokens = common_tokens
+
+#     def __call__(self, features: Iterable[InputFeatures]) -> List[np.ndarray]:
+
+#         if random.uniform(0.0, 1.0) < self.fraction_using_func_name:
+#             all_query_tokens = [f.query_tokens for f in features]
+#             all_query_tokens_mask = [f.query_tokens_mask for f in features]
+#         else:
+#             all_query_tokens = [f.query_docstring_tokens for f in features]
+#             all_query_tokens_mask = [f.query_docstring_tokens_mask for f in features]
+
+#         # only replace tokens with most common tokens if there are
+#         if len(self.common_tokens) > 0:
+#             for i, (qt, qm) in enumerate(zip(all_query_tokens, all_query_tokens_mask)):
+#                 total_length = len(qt)
+#                 length_without_padding = int(np.sum(qm))
+#                 insert_indices = np.array([random.uniform(0.0, 1.0) for _ in range(length_without_padding)])
+#                 insert_indices = insert_indices < self.query_random_token_frequency
+#                 insert_indices = np.flatnonzero(insert_indices)
+#                 if len(insert_indices) > 0:
+#                     tokens_to_add = [
+#                         random.randrange(0, len(self.common_tokens)) for _ in range(len(insert_indices))
+#                     ]  # select one of the most common tokens for each location
+#                     tokens_to_add = [
+#                         self.common_tokens[token] for token in tokens_to_add
+#                     ]  # get the ID corresponding to the token we're adding
+#                     to_insert = 0
+#                     output_query = np.zeros(total_length, dtype=int)
+#                     for idx in range(
+#                         min(length_without_padding, total_length - len(insert_indices))
+#                     ):  # iterate only through the beginning of the array where changes are being made
+#                         if to_insert < len(insert_indices) and idx == insert_indices[to_insert]:
+#                             output_query[idx + to_insert] = tokens_to_add[to_insert]
+#                             to_insert += 1
+#                         output_query[idx + to_insert] = qt[idx]
+#                     all_query_tokens[i] = output_query
+#                     # Add the needed number of non-padding values to the mask:
+#                     all_query_tokens_mask[i][length_without_padding : length_without_padding + len(tokens_to_add)] = 1.0
+
+#         all_code_tokens = [f.code_tokens for f in features]
+#         all_code_tokens_mask = [f.code_tokens_mask for f in features]
+#         all_languages = [f.language for f in features]
+#         all_similarity = [f.similarity for f in features]
+#         if self.lang_weights is not None:
+#             all_lang_weights = [self.lang_weights[f.language] for f in features]
+#         else:
+#             all_lang_weights = [1.0 for _ in features]
+#         return [
+#             all_languages,
+#             all_similarity,
+#             all_query_tokens,
+#             all_query_tokens_mask,
+#             all_code_tokens,
+#             all_code_tokens_mask,
+#             all_lang_weights,
+#         ]
+
+
+class InputFeaturesToNpArray_RandomReplace(object):
+    def __init__(
+        self,
+        lang_weights: Optional[Dict[int, float]],
+        fraction_using_func_name: float,
+        query_random_token_frequency: float,
+        common_tokens: Dict[int, List[int]],
+    ):
+        self.lang_weights = lang_weights
+        self.fraction_using_func_name = fraction_using_func_name
+        self.query_random_token_frequency = query_random_token_frequency
+        self.common_tokens = common_tokens
+
+    def __call__(self, feat: InputFeatures) -> List[np.ndarray]:
+
+        if random.uniform(0.0, 1.0) < self.fraction_using_func_name:
+            query_tokens = feat.query_tokens
+            query_tokens_mask = feat.query_tokens_mask
+        else:
+            query_tokens = feat.query_docstring_tokens
+            query_tokens_mask = feat.query_docstring_tokens_mask
+
+        code_tokens = feat.code_tokens
+        code_tokens_mask = feat.code_tokens_mask
+        language = feat.language
+        similarity = feat.similarity
+        if self.lang_weights is not None:
+            lang_weights = self.lang_weights[feat.language]
+        else:
+            lang_weights = 1.0
+
+        # only replace tokens with most common tokens if there are
+        if language in self.common_tokens and len(self.common_tokens[language]) > 0:
+            total_length = len(query_tokens)
+            length_without_padding = int(np.sum(query_tokens_mask))
+            insert_indices = np.array([random.uniform(0.0, 1.0) for _ in range(length_without_padding)])
+            insert_indices = insert_indices < self.query_random_token_frequency
+            insert_indices = np.flatnonzero(insert_indices)
+            if len(insert_indices) > 0:
+                tokens_to_add = [
+                    random.randrange(0, len(self.common_tokens[language])) for _ in range(len(insert_indices))
+                ]  # select one of the most common tokens for each location
+                tokens_to_add = [
+                    self.common_tokens[language][token] for token in tokens_to_add
+                ]  # get the ID corresponding to the token we're adding
+                to_insert = 0
+                output_query = np.zeros(total_length, dtype=int)
+                for idx in range(
+                    min(length_without_padding, total_length - len(insert_indices))
+                ):  # iterate only through the beginning of the array where changes are being made
+                    if to_insert < len(insert_indices) and idx == insert_indices[to_insert]:
+                        output_query[idx + to_insert] = tokens_to_add[to_insert]
+                        to_insert += 1
+                    output_query[idx + to_insert] = query_tokens[idx]
+                query_tokens = output_query
+                # Add the needed number of non-padding values to the mask:
+                query_tokens_mask[length_without_padding : length_without_padding + len(tokens_to_add)] = 1.0
+
+        return [language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+
+
+class Tensorize(object):
+    def __call__(self, features: Iterable[np.ndarray]) -> List[torch.Tensor]:
+        return [torch.as_tensor(f) for f in features]
+
+
+class Compose(object):
+    """
+    Compose several transforms together.
+
+    Args:
+        transforms (list of ``Transform`` objects): list of transforms to compose.
+
+    Example:
+        >>> transforms.Compose([
+        >>>     transforms.CenterCrop(10),
+        >>>     transforms.ToTensor(),
+        >>> ])
+    """
+
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, d):
+        for t in self.transforms:
+            d = t(d)
+        return d
+
+    def __repr__(self):
+        """Represent object"""
+        format_string = self.__class__.__name__ + "("
+        for t in self.transforms:
+            format_string += "\n"
+            format_string += "    {0}".format(t)
+        format_string += "\n)"
+        return format_string
+
+
 class LangDataset(ConcatNamedDataset):
     """
     Dataset wrapping language features.
@@ -155,12 +363,22 @@ class LangDataset(ConcatNamedDataset):
         *tensors (Tensor): tensors that have the same size of the first dimension.
     """
 
-    def __init__(self, lang_features: Dict[str, Tuple[int, Iterable[InputFeatures]]], lang_ids: Dict[str, int]):
+    def __init__(
+        self,
+        lang_features: Dict[str, Tuple[int, Iterable[InputFeatures]]],
+        lang_ids: Dict[str, int],
+        transform: Callable[[InputFeatures], List[np.ndarray]],
+        use_lang_weights: bool = False,
+    ):
         self.langs: List[str] = list(lang_features.keys())
         self.lang_ids = lang_ids
-        self.datasets: List[TensorDataset] = []
+        # self.datasets: List[TensorDataset] = []
+        self.datasets: List[FeatsDataset] = []
+
         self.datasets_len: List[Tuple[int, str, int]] = []
         self.lang_indexes: Dict[int, int] = {}
+        self.use_lang_weights = use_lang_weights
+
         logger.info("Concatenating Datasets")
         lang_features_sorted = sorted(lang_features.items(), key=lambda lf: lf[1][0], reverse=True)
         for idx, (lang, (nb, features)) in enumerate(lang_features_sorted):
@@ -168,32 +386,35 @@ class LangDataset(ConcatNamedDataset):
             self.lang_indexes[lang_id] = idx
             logger.info(f"Adding Language {lang} id:{idx} lang_id:{lang_id} [{nb} samples]")
             self.datasets_len.append((lang_id, lang, nb))
-            ds = TensorDataset(*self.__tensorize_features(features))
+            # ds = TensorDataset(*self.__tensorize_features(features))
+            ds = FeatsDataset(list(features), transform)
             self.datasets.append(ds)
 
         # self.datasets = sorted(datasets, key=lambda d: len(d), reverse=True)
         self.concat_dataset: ConcatDataset = ConcatDataset(self.datasets)
         logger.info(f"Concat_dataset [{len(self.concat_dataset)} samples]")
 
-    def __tensorize_features(self, features: Iterable[InputFeatures]) -> Tuple:
-        # logger.debug(f"query_tokens {list(features)[0].query_tokens}")
-        # logger.debug(f"query_tokens_mask {list(features)[0].query_tokens_mask}")
-        # logger.debug(f"code_tokens {list(features)[0].code_tokens}")
-        # logger.debug(f"code_tokens_mask {list(features)[0].code_tokens_mask}")
-        all_query_tokens = torch.as_tensor([f.query_tokens for f in features], dtype=torch.long)
-        all_query_tokens_mask = torch.as_tensor([f.query_tokens_mask for f in features], dtype=torch.long)
-        all_code_tokens = torch.as_tensor([f.code_tokens for f in features], dtype=torch.long)
-        all_code_tokens_mask = torch.as_tensor([f.code_tokens_mask for f in features], dtype=torch.long)
-        all_languages = torch.as_tensor([f.language for f in features], dtype=torch.int8)
-        all_similarity = torch.as_tensor([f.similarity for f in features], dtype=torch.float)
-        return (
-            all_languages,
-            all_similarity,
-            all_query_tokens,
-            all_query_tokens_mask,
-            all_code_tokens,
-            all_code_tokens_mask,
-        )
+    # def __tensorize_features(self, features: Iterable[InputFeatures]) -> Tuple:
+    #     all_query_tokens = torch.as_tensor([f.query_tokens for f in features], dtype=torch.long)
+    #     all_query_tokens_mask = torch.as_tensor([f.query_tokens_mask for f in features], dtype=torch.long)
+    #     all_code_tokens = torch.as_tensor([f.code_tokens for f in features], dtype=torch.long)
+    #     all_code_tokens_mask = torch.as_tensor([f.code_tokens_mask for f in features], dtype=torch.long)
+    #     all_languages = torch.as_tensor([f.language for f in features], dtype=torch.int8)
+    #     all_similarity = torch.as_tensor([f.similarity for f in features], dtype=torch.float)
+    #     if self.use_lang_weights:
+    #         all_lang_weights = torch.as_tensor([self.lang_weights[f.language] for f in features], dtype=torch.float)
+    #     else:
+    #         all_lang_weights = torch.as_tensor([1.0 for _ in features], dtype=torch.float)
+
+    #     return (
+    #         all_languages,
+    #         all_similarity,
+    #         all_query_tokens,
+    #         all_query_tokens_mask,
+    #         all_code_tokens,
+    #         all_code_tokens_mask,
+    #         all_lang_weights,
+    #     )
 
     def get_datasets_nb(self) -> int:
         return len(self.datasets)
@@ -225,6 +446,22 @@ class LangDataset(ConcatNamedDataset):
         return len(self.concat_dataset)
 
 
+def compute_language_weightings(
+    data: Dict[str, Tuple[int, Iterable[InputFeatures]]], lang_ids: Dict[str, int]
+) -> Dict[int, float]:
+    # language_to_num_remaining_samples = {}
+    # for (language, (nb, _)) in data.items():
+    #     language_to_num_remaining_samples[language] = nb
+
+    total_num_samples = sum(map(lambda d: d[0], data.values()))
+    num_languages = len(data)
+    language_to_reweighting_factor = {
+        lang_ids[language]: float(total_num_samples) / (num_languages * nb) for (language, (nb, _)) in data.items()
+    }
+
+    return language_to_reweighting_factor
+
+
 class BalancedBatchSchedulerSampler(torch.utils.data.sampler.Sampler):
     """Iterate over tasks and provide a balanced batch per task in each mini-batch"""
 
@@ -244,16 +481,6 @@ class BalancedBatchSchedulerSampler(torch.utils.data.sampler.Sampler):
                 f"Sampling batches from Dataset[lang_id:{lang_id}, count:{dataset_count}, len:{len(cur_dataset)} lang:{lang}]"
             )
             sampler = RandomSampler(cur_dataset)
-            # if idx == 0:
-            #     # the first dataset is kept at RandomSampler
-            #     sampler = RandomSampler(cur_dataset)
-            # else:
-            #     # the second unbalanced dataset is changed
-            #     def get_label(idx: int) -> str:
-            #         return str(self.dataset.get_dataset_index_for_sample_index(idx))
-
-            #     sampler = ImbalancedDatasetSampler(cur_dataset, callback_get_label=get_label)
-            #     sampler = RandomSampler(cur_dataset)
 
             self.samplers_list.append(sampler)
             cur_sampler_iterator = sampler.__iter__()

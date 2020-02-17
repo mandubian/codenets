@@ -21,6 +21,7 @@ from pyhocon import ConfigFactory, ConfigTree
 
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, default_sample_update
 from codenets.codesearchnet.dataset_utils import DatasetType
+from codenets.codesearchnet.tokenizer_recs import build_most_common_tokens
 
 print("Torch version", torch.__version__)  # type: ignore
 
@@ -38,12 +39,17 @@ def run_single_code_tokenizer(args, tag_in_vcs=False) -> None:
     logger.info(f"Build Training Context from config {conf_file}")
     training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
 
-    training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
+    # training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
 
-    txt = "python <lg> def toto():"
-    logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))
-    txt = "go <lg> function getCounts() { return 0 }"
-    logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))
+    # txt = "python <lg> def toto():"
+    # logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))
+    # txt = "go <lg> function getCounts() { return 0 }"
+    # logger.info("encoded", training_ctx.tokenize_code_sentences([txt]))
+
+    most_commons = build_most_common_tokens(
+        training_ctx.train_dirs, training_ctx.train_data_params, training_ctx.tokenizers_build_path
+    )
+    logger.info(f"most_commons {most_commons}")
 
 
 if __name__ == "__main__":

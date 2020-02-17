@@ -35,6 +35,7 @@ class PreTrainedModelRecordable(Generic[Pretrained_T], RecordableTorchModule):
     def load(cls: Type[PretrainedRec_T], restore_dir: Union[Path, str]) -> PretrainedRec_T:
         full_dir = Path(restore_dir) / full_classname(cls)
         logger.debug(f"Loading BertModel from {full_dir}")
+        # TODO doesn't work...
         model = BertModel.from_pretrained(str(full_dir))
         return cls(model)
 

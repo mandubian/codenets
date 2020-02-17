@@ -4,10 +4,11 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Mapping, Type, TypeVar, Union, MutableMapping, List
+from typing import Any, Dict, Mapping, Type, TypeVar, Union, MutableMapping, List, Generic
 from loguru import logger
 import torch
 from torch import nn
+import pickle
 
 from pyhocon import ConfigFactory, ConfigTree, HOCONConverter
 from codenets.utils import full_classname, instance_full_classname, runtime_import
@@ -156,10 +157,13 @@ class ConfigFileRecordable(Recordable):
         return ConfigFileRecordable(d / files[0])
 
 
+PickleRecordable_T = TypeVar("PickleRecordable_T")
+
+
 class DictRecordable(Recordable, Dict):
     """A recordable for a basic Dict"""
 
-    def __init__(self, state: Dict[str, Any]):
+    def __init__(self, state: Dict[Any, Any]):
         super(DictRecordable, self).__init__(state)
         # self.state = state
 

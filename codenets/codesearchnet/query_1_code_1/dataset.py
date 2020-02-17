@@ -14,7 +14,14 @@ from codenets.utils import _to_subtoken_stream, get_data_files_from_directory
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.copied_code.utils import read_file_samples
-from codenets.codesearchnet.dataset_utils import load_data_from_sample, Samples, LangDataset
+from codenets.codesearchnet.dataset_utils import (
+    load_data_from_sample,
+    Samples,
+    LangDataset,
+    Compose,
+    InputFeaturesToNpArray,
+    Tensorize,
+)
 from codenets.codesearchnet.copied_code.metadata import QueryType
 from codenets.codesearchnet.data import InputFeatures
 
@@ -235,9 +242,12 @@ def build_lang_dataset_single_code_tokenizer(
     query_tokenizer: TokenizerRecordable,
     code_tokenizer: TokenizerRecordable,
     lang_token: str,
+    use_lang_weights: bool,
     pickle_path=".",
     parallelize: bool = False,
 ) -> LangDataset:
+    # TODO : modify that because it should not be made at this step...
+    # check query_code_siamese
     def build_input_features_from_dict(sample: Dict[str, Union[str, int, np.ndarray]]) -> InputFeatures:
         """Build InputFeature from Dict by randomizing between using docstring or function name for query"""
         if random.uniform(0.0, 1.0) < data_params.fraction_using_func_name:
@@ -246,6 +256,8 @@ def build_lang_dataset_single_code_tokenizer(
                 similarity=cast(int, sample["similarity"]),
                 query_tokens=sample["query_tokens_func_name_as_query"],
                 query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
+                query_docstring_tokens=sample["query_tokens_docstring_as_query"],
+                query_docstring_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
                 code_tokens=sample["code_tokens_func_name_as_query"],
                 code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
             )
@@ -255,6 +267,8 @@ def build_lang_dataset_single_code_tokenizer(
                 similarity=cast(int, sample["similarity"]),
                 query_tokens=sample["query_tokens_docstring_as_query"],
                 query_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
+                query_docstring_tokens=sample["query_tokens_docstring_as_query"],
+                query_docstring_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
                 code_tokens=sample["code_tokens_docstring_as_query"],
                 code_tokens_mask=sample["code_tokens_mask_docstring_as_query"],
             )
@@ -298,6 +312,9 @@ def build_lang_dataset_single_code_tokenizer(
         logger.debug(f"Pickled dataset {name} [{nb} raw samples] to {pickle_file}")
 
     # logger.debug(f"Samples {loaded_samples['python'][:2]}")
-    dataset = LangDataset(loaded_samples, lang_ids=data_params.lang_ids)
+    transform = Compose([InputFeaturesToNpArray, Tensorize])
+    dataset = LangDataset(
+        loaded_samples, lang_ids=data_params.lang_ids, transform=transform, use_lang_weights=use_lang_weights
+    )
     logger.debug(f"Loaded {name} lang dataset [{len(dataset)} samples]")
     return dataset

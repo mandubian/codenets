@@ -51,19 +51,3 @@ class MeanWeightedPooler(EmbeddingPooler):
         seq_weighted_sum = torch.sum(seq_outputs * token_weights, dim=1)  # B x D
         output = seq_weighted_sum / torch.sum(token_weights, dim=1).clamp(min=self.eps)
         return output
-
-    # def save(self, output_dir: Union[Path, str]) -> bool:
-    #     full_dir = Path(output_dir) / instance_full_classname(self)
-    #     logger.debug(f"Saving MeanWeightedPooler to {full_dir}")
-    #     os.makedirs(full_dir, exist_ok=True)
-    #     torch.save(self.state_dict(), full_dir / "state_dict.pth")
-    #     return True
-
-    # @classmethod
-    # def load(cls, restore_dir: Union[Path, str], *model_args, **kwargs) -> MeanWeightedPooler:
-    #     full_dir = Path(restore_dir) / full_classname(cls)
-    #     logger.debug(f"Loading MeanWeightedPooler from {full_dir}")
-    #     state_dict = torch.load(full_dir / "state_dict.pth")
-    #     pooler = MeanWeightedPooler()
-    #     pooler.load_state_dict(state_dict)
-    #     return pooler

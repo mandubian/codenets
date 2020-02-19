@@ -1,4 +1,4 @@
-from __future__ import annotations
+# from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -51,7 +51,7 @@ class QueryCodeSiamese(RecordableTorchModule):
         return save_recordable_mapping(output_dir=d, records=records)
 
     @classmethod
-    def load(cls, restore_dir: Union[Path, str]) -> QueryCodeSiamese:
+    def load(cls, restore_dir: Union[Path, str]) -> "QueryCodeSiamese":
         d = Path(restore_dir) / full_classname(cls)
         records = runtime_load_recordable_mapping(d)
         return cls(**records)
@@ -101,7 +101,7 @@ class QueryCodeSiamese(RecordableTorchModule):
             return code_seq_outputs[1]
 
     @classmethod
-    def from_hocon(cls: Type[QueryCodeSiamese], config: ConfigTree) -> QueryCodeSiamese:
+    def from_hocon(cls: Type["QueryCodeSiamese"], config: ConfigTree) -> "QueryCodeSiamese":
         """Load Query1Code1_CodeSearchModel from a config tree"""
 
         if "training.model.encoder.type" in config:

@@ -1,5 +1,5 @@
 {
-    "python.pythonPath": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.7/bin/python",
+    "python.pythonPath": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.6/bin/python",
     "python.linting.lintOnSave": true,
     "python.linting.pylintEnabled": false,
     "python.linting.pylamaEnabled": true,
@@ -18,7 +18,7 @@
     },
     "autoDocstring.docstringFormat": "google",
     "git.ignoreLimitWarning": true,
-    "mypy.executable": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.7/bin/mypyls",
+    "mypy.executable": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.6/bin/mypyls",
     // "mypy.targets": [
     //     "./src"
     // ],

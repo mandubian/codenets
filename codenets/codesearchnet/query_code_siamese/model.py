@@ -7,7 +7,7 @@ from typing import MutableMapping, Optional, Union, Mapping, cast, Dict, List, T
 import numpy as np
 import torch
 from loguru import logger
-from transformers import AdamW, BertConfig, BertModel
+from transformers import AdamW, BertConfig, BertModel, AlbertConfig, AlbertModel
 
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
@@ -104,9 +104,23 @@ class QueryCodeSiamese(RecordableTorchModule):
     def from_hocon(cls: Type[QueryCodeSiamese], config: ConfigTree) -> QueryCodeSiamese:
         """Load Query1Code1_CodeSearchModel from a config tree"""
 
-        bert_config = BertConfig(**config["training.model.encoder"])
-        encoder = PreTrainedModelRecordable(BertModel(bert_config))
+        if "training.model.encoder.type" in config:
+            if config["training.model.encoder.type"] == "albert":
+                logger.info("Creating QueryCodeSiamese with Albert encoder")
+                albert_config = AlbertConfig(**config["training.model.encoder"])
+                encoder = PreTrainedModelRecordable(AlbertModel(albert_config))
+            elif config["training.model.encoder.type"] == "bert":
+                logger.info("Creating QueryCodeSiamese with Bert encoder")
+                bert_config = BertConfig(**config["training.model.encoder"])
+                encoder = PreTrainedModelRecordable(BertModel(bert_config))
+        else:
+            # default is BERT now
+            logger.info("Creating QueryCodeSiamese with Bert encoder")
+            bert_config = BertConfig(**config["training.model.encoder"])
+            encoder = PreTrainedModelRecordable(BertModel(bert_config))
 
-        model = QueryCodeSiamese(encoder=encoder, pooler=MeanWeightedPooler(input_size=bert_config.hidden_size))
+        model = QueryCodeSiamese(
+            encoder=encoder, pooler=MeanWeightedPooler(input_size=config["training.model.encoder.hidden_size"])
+        )
 
         return model

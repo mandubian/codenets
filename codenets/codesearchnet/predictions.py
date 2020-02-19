@@ -47,7 +47,7 @@ def compute_code_encodings_from_defs(
     lang_id = training_ctx.train_data_params.lang_ids[language]
     h5_file = (
         training_ctx.pickle_path
-        / f"{language}_{training_ctx.training_tokenizer_type}_dedupe_definitions_v2_codes_encoded.h5"
+        / f"{language}_{training_ctx.training_full_name}_dedupe_definitions_v2_codes_encoded.h5"
     )
     root_data_path = Path(training_ctx.conf["dataset.root_dir"])
 

@@ -445,6 +445,7 @@ So, the higher compression of embedding space seems to be better for NDCG and wo
 - Encode AST as sequences
 - Encode AST graphs for embedding
 - Use pretrained Bert for query embedding
+- Study vocabulary and embeddings distribution
 
 ### HOCON configuration
 

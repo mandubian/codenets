@@ -35,8 +35,10 @@ BatchSize = NewType("BatchSize", int)
 TotalLoss = NewType("TotalLoss", float)
 TotalSize = NewType("TotalSize", int)
 TotalMrr = NewType("TotalMrr", float)
+TotalNdcg = NewType("TotalNdcg", float)
 AvgLoss = NewType("AvgLoss", float)
 AvgMrr = NewType("AvgMrr", float)
+AvgNdcg = NewType("AvgNdcg", float)
 UsedTime = NewType("UsedTime", float)
 
 
@@ -65,6 +67,113 @@ def compute_loss_mrr(
     new_total_mrr = TotalMrr(total_mrr + per_batch_mrr.item() * batch_size)
     avg_mrr = AvgMrr(new_total_mrr / max(1, new_total_samples))
     return new_total_loss, avg_loss, new_total_mrr, avg_mrr, new_total_samples
+
+
+def compute_loss_mrr_ndcg(
+    batch: List[Tensor],
+    similarity_scores: Tensor,
+    batch_loss: BatchLoss,
+    batch_size: BatchSize,
+    total_loss: TotalLoss,
+    total_mrr: TotalMrr,
+    total_ndcg: TotalNdcg,
+    total_samples: TotalSize,
+    device: torch.device,
+) -> Tuple[TotalLoss, AvgLoss, TotalMrr, AvgMrr, TotalNdcg, AvgNdcg, TotalSize]:
+    _, similarity, _, _, _, _, _ = [t.to(device) for t in batch]
+    # compute total loss, avg loss, total MRR, avg MRR, total size
+    # extract the logits from the diagonal of the matrix, which are the logits corresponding to the ground-truth
+    correct_scores = similarity_scores.diagonal()
+
+    similarity_true = torch.diag(similarity).float()
+    per_sample_ndcg = compute_ndcg(similarity_scores, similarity_true, device)
+    per_batch_ndcg = torch.sum(per_sample_ndcg) / batch_size
+
+    # compute how many queries have bigger logits than the ground truth (the diagonal)
+    # the elements that are incorrectly ranked
+    compared_scores = similarity_scores.ge(correct_scores.unsqueeze(dim=-1)).float()
+    compared_scores_nb = torch.sum(compared_scores, dim=1)
+    per_sample_mrr = torch.div(1.0, compared_scores_nb)
+    per_batch_mrr = torch.sum(per_sample_mrr) / batch_size
+
+    new_total_samples = TotalSize(total_samples + batch_size)
+    new_total_loss = TotalLoss(total_loss + batch_loss * batch_size)
+    avg_loss = AvgLoss(new_total_loss / max(1, new_total_samples))
+
+    new_total_mrr = TotalMrr(total_mrr + per_batch_mrr.item() * batch_size)
+    avg_mrr = AvgMrr(new_total_mrr / max(1, new_total_samples))
+
+    new_total_ndcg = TotalNdcg(total_ndcg + per_batch_ndcg.item() * batch_size)
+    avg_ndcg = AvgNdcg(new_total_ndcg / max(1, new_total_samples))
+
+    return new_total_loss, avg_loss, new_total_mrr, avg_mrr, new_total_ndcg, avg_ndcg, new_total_samples
+
+
+def compute_ndcg(
+    y_pred: Tensor, y_true: Tensor, device: torch.device, ats=None, gain_function=lambda x: torch.pow(2, x) - 1
+) -> Tensor:
+    """
+    Compute Normalized Discounted Cumulative Gain at k.
+    
+    Compute NDCG at ranks given by ats or at the maximum rank if ats is None.
+    :param y_pred: predictions from the model, shape [batch_size, slate_length]
+    :param y_true: ground truth labels, shape [batch_size, slate_length]
+    :param ats: optional list of ranks for NDCG evaluation, if None, maximum rank is used
+    :param gain_function: callable, gain function for the ground truth labels, e.g. torch.pow(2, x) - 1
+    :return: NDCG values for each slate and rank passed, shape [batch_size, len(ats)]
+    """
+    idcg = dcg(y_true, y_true, device, ats, gain_function)
+    ndcg_ = dcg(y_pred, y_true, device, ats, gain_function) / idcg
+    idcg_mask = idcg == 0
+    ndcg_[idcg_mask] = 0.0  # if idcg == 0 , set ndcg to 0
+
+    assert (ndcg_ < 0.0).sum() >= 0, "every ndcg should be non-negative"
+
+    return ndcg_
+
+
+def __apply_mask_and_get_true_sorted_by_preds(y_pred: Tensor, y_true: Tensor, padded_value: float = -1):
+    mask = y_true == padded_value
+
+    y_pred[mask] = float("-inf")
+    y_true[mask] = 0.0
+
+    _, indices = y_pred.sort(descending=True, dim=-1)
+    return torch.gather(y_true, dim=1, index=indices)
+
+
+def dcg(y_pred: Tensor, y_true: Tensor, device: torch.device, ats=None, gain_function=lambda x: torch.pow(2, x) - 1):
+    """
+    Cmpute Discounted Cumulative Gain at k.
+    Compute DCG at ranks given by ats or at the maximum rank if ats is None.
+    :param y_pred: predictions from the model, shape [batch_size, slate_length]
+    :param y_true: ground truth labels, shape [batch_size, slate_length]
+    :param ats: optional list of ranks for DCG evaluation, if None, maximum rank is used
+    :param gain_function: callable, gain function for the ground truth labels, e.g. torch.pow(2, x) - 1
+    :return: DCG values for each slate and evaluation position, shape [batch_size, len(ats)]
+    """
+    # y_true = y_true.clone()
+    # y_pred = y_pred.clone()
+
+    actual_length = y_true.shape[1]
+
+    if ats is None:
+        ats = [actual_length]
+    ats = [min(at, actual_length) for at in ats]
+
+    true_sorted_by_preds = __apply_mask_and_get_true_sorted_by_preds(y_pred, y_true)
+
+    discounts = (torch.tensor(1) / torch.log2(torch.arange(true_sorted_by_preds.shape[1], dtype=torch.float) + 2.0)).to(
+        device=device
+    )
+
+    gains = gain_function(true_sorted_by_preds)
+    discounted_gains = (gains * discounts)[:, : np.max(ats)]
+    cum_dcg = torch.cumsum(discounted_gains, dim=1)
+    ats_tensor = torch.tensor(ats, dtype=torch.long) - torch.tensor(1)
+    dcg = cum_dcg[:, ats_tensor]
+
+    return dcg
 
 
 class ModelAndAdamWRecordable(Generic[Model_T], Recordable):
@@ -177,9 +286,10 @@ class CodeSearchTrainingContext(RecordableMapping):
         self.best_loss = self.training_params["val_loss"]
         self.best_mrr_epoch = self.start_epoch
         self.best_mrr = self.training_params["val_mrr"]
-
+        self.best_ndcg_epoch = self.start_epoch
+        self.best_ndcg = self.training_params.get("val_ndcg", 0)  # for back compat
         logger.info(
-            f"Re-launching training from epoch: {self.start_epoch} with loss:{self.best_loss} mrr:{self.best_mrr}"
+            f"Re-launching training from epoch: {self.start_epoch} with loss:{self.best_loss} mrr:{self.best_mrr} ndcg:{self.best_ndcg}"
         )
 
     @classmethod
@@ -194,8 +304,10 @@ class CodeSearchTrainingContext(RecordableMapping):
                     "val_global_step": 0,
                     "train_loss": float("inf"),
                     "train_mrr": 0.0,
+                    "train_ndcg": 0.0,
                     "val_loss": float("inf"),
                     "val_mrr": 0.0,
+                    "val_ndcg": 0.0,
                 }
             ),
         }

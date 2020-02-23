@@ -29,12 +29,14 @@ from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, 
 from codenets.save import save_records_best, save_records_last
 from codenets.codesearchnet.training_ctx import (
     CodeSearchTrainingContext,
-    compute_loss_mrr,
+    compute_loss_mrr_ndcg,
     AvgLoss,
     AvgMrr,
     UsedTime,
     TotalLoss,
     TotalMrr,
+    TotalNdcg,
+    AvgNdcg,
     TotalSize,
     BatchSize,
     BatchLoss,
@@ -48,6 +50,7 @@ logger.add(sys.stderr, level="DEBUG", colorize=True, backtrace=False)
 class EpochResult:
     loss: AvgLoss
     mrr: AvgMrr
+    ndcg: AvgNdcg
     used_time: UsedTime
 
 
@@ -67,6 +70,7 @@ def run_epoch(
     total_loss = TotalLoss(0.0)
     total_size = TotalSize(0)
     total_mrr = TotalMrr(0.0)
+    total_ndcg = TotalNdcg(0.0)
     training_ctx.epoch = epoch
     epoch_start = time.time()
     if is_train:
@@ -87,8 +91,20 @@ def run_epoch(
 
             batch_size = BatchSize(batch[0].size()[0])
             batch_loss = BatchLoss(per_sample_loss.item())
-            total_loss, avg_loss, total_mrr, avg_mrr, total_size = compute_loss_mrr(
-                similarity_scores, batch_loss, batch_size, total_loss, total_mrr, total_size
+            # total_loss, avg_loss, total_mrr, avg_mrr, total_size = compute_loss_mrr(
+            #     similarity_scores, batch_loss, batch_size, total_loss, total_mrr, total_size
+            # )
+
+            total_loss, avg_loss, total_mrr, avg_mrr, total_ndcg, avg_ndcg, total_size = compute_loss_mrr_ndcg(
+                batch,
+                similarity_scores,
+                batch_loss,
+                batch_size,
+                total_loss,
+                total_mrr,
+                total_ndcg,
+                total_size,
+                training_ctx.device,
             )
 
             if is_train:
@@ -109,7 +125,11 @@ def run_epoch(
                     )
                 if training_ctx.wandb_activated:
                     wandb.log(
-                        {f"{prefix}_batch_loss": avg_loss, f"{prefix}_batch_mrr": avg_mrr},
+                        {
+                            f"{prefix}_batch_loss": avg_loss,
+                            f"{prefix}_batch_mrr": avg_mrr,
+                            f"{prefix}_batch_ndcg": avg_ndcg,
+                        },
                         step=training_ctx.train_global_step,
                     )
     used_time = UsedTime(time.time() - epoch_start)
@@ -118,6 +138,7 @@ def run_epoch(
             {
                 f"{prefix}_loss": avg_loss,
                 f"{prefix}_mrr": avg_mrr,
+                f"{prefix}_ndcg": avg_ndcg,
                 f"{prefix}_samples_per_sec": int(total_size / used_time),
             },
             group=prefix,
@@ -130,11 +151,12 @@ def run_epoch(
                 f"epoch": epoch,
                 f"{prefix}_epoch_loss": avg_loss,
                 f"{prefix}_epoch_mrr": avg_mrr,
+                f"{prefix}_epoch_ndcg": avg_ndcg,
                 f"{prefix}_epoch_samples_per_sec": int(total_size / used_time),
             }
         )
 
-    return EpochResult(avg_loss, avg_mrr, used_time)
+    return EpochResult(avg_loss, avg_mrr, avg_ndcg, used_time)
 
 
 def run(args, tag_in_vcs=False) -> None:
@@ -239,12 +261,22 @@ def run(args, tag_in_vcs=False) -> None:
                 logger.info(f"New best model MRR:{training_ctx.best_mrr} epoch:{training_ctx.best_mrr_epoch}")
                 save_records_best(training_ctx.output_dir / training_ctx.training_full_name, training_ctx, suffix="mrr")
 
+            if val_result.ndcg > training_ctx.best_ndcg:
+                training_ctx.best_ndcg = val_result.ndcg
+                training_ctx.best_ndcg_epoch = epoch
+                logger.info(f"New best model NDCG:{training_ctx.best_ndcg} epoch:{training_ctx.best_ndcg_epoch}")
+                save_records_best(
+                    training_ctx.output_dir / training_ctx.training_full_name, training_ctx, suffix="ndcg"
+                )
+
             t_epoch.set_postfix(
                 {
                     f"best_loss": training_ctx.best_loss,
                     "best_loss_epoch": training_ctx.best_loss_epoch,
                     "best_mrr": training_ctx.best_mrr,
                     "best_mrr_epoch": training_ctx.best_mrr_epoch,
+                    "best_ndcg": training_ctx.best_ndcg,
+                    "best_ndcg_epoch": training_ctx.best_ndcg_epoch,
                 }
             )
             t_epoch.update(1)

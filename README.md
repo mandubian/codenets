@@ -449,7 +449,7 @@ So, the higher compression of embedding space seems to be better for NDCG and wo
 
 In previous experiments, Javascript language have appeared to give the worst results in all configurations.
 
-If we check language code distribution in the notebook, we see that JS is a language that tends to be more verbose with more tokens than other languages. In previous experiments, we have trained our models with 200 max code tokens because in all languages, 200 represents the 0.9-quantile in all languages except JS. We could try to accept more code tokens and see how the model behaves (specially for JS)
+If we check language code distribution in [distribution notebook](https://github.com/mandubian/codenets/blob/master/codenets/codesearchnet/notebooks/codesearchnet_distrib.ipynb), we see that JS is a language that tends to be more verbose with more tokens than other languages. In previous experiments, we have trained our models with 200 max code tokens because in all languages, 200 represents the 0.9-quantile in all languages except JS. We could try to accept more code tokens and see how the model behaves (specially for JS)
 
 
 ###### Configuration

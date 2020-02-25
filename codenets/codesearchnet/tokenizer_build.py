@@ -37,9 +37,9 @@ def run(args, tag_in_vcs=False) -> None:
     logger.info(f"config {conf}")
 
     logger.info(f"Build Training Context from config {conf_file}")
-    # training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
+    training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
 
-    # training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
+    training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
 
     logger.info(f"Reload Training Context from config {conf_file} with built tokenizers")
     training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)

@@ -442,6 +442,91 @@ So, the higher compression of embedding space seems to be better for NDCG and wo
 
 > I'd need to study distribution of embedding space and tokenization to find further clues.
 
+
+----
+
+#### QueryCodeSiamese with smaller embedding/model but longer token code sequences
+
+In previous experiments, Javascript language have appeared to give the worst results in all configurations.
+
+If we check language code distribution in the notebook, we see that JS is a language that tends to be more verbose with more tokens than other languages. In previous experiments, we have trained our models with 200 max code tokens because in all languages, 200 represents the 0.9-quantile in all languages except JS. We could try to accept more code tokens and see how the model behaves (specially for JS)
+
+
+###### Configuration
+
+We take the same model with small emnedding but accept up to 400 code tokens for all languages.
+
+|`Model`|Encoder|Tokenizer|
+|---|---|---|
+|1 Query+Code Path|Bert 256/2/8/32|BPE 30K|
+
+|`Training`|epochs|lr|loss|batch size|seed|epoch duration|max code tokens|
+|---|---|---|---|---|---|---|
+||10|0.0001|cross_entropy|768|0|~30mn|400|
+
+###### W&B run
+
+https://app.wandb.ai/mandubian/codenets/runs/e42kovab/overview?workspace=user-mandubian
+
+###### Metrics
+
+|Max MRR|Train|Val|
+|---|---|---|
+||0.7356|0.6078|
+
+|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|   |**0.1779**|0.1065|0.1803|0.1291|0.1321|0.2485|0.2407|
+
+###### Analysis
+
+The result MRR is a bit lower than with less code tokens.
+
+the mean NDCG is a bit higher than previous experiment. But if we check each language, we see that Javascript is indeed better with more code tokens (0.129 vs 0.108) but all other languages are a bit lower or the same.
+
+So, increasing the max number of code tokens improves a bit JS results but not the others. As previous 200 max code tokens were already in the 0.9-quantile for most languages, it means adding more tokens doesn't bring much more to model training.
+
+----
+
+#### QueryCodeSiamese with smaller embedding/model and BPE sub-tokenization
+
+in languages, function and symbols are often written in camelcase like `functionName` or in snakecase like `function_name`. Splitting those elements in 2 tokens `function` and `name` might help the model to extract more meaninful information from code.
+
+So we could try to train a 30K BPE tokenizer using sub-tokenization by splitting symbol and function names.
+
+###### Configuration
+
+We take the same model with small emnedding but accept up to 400 code tokens for all languages.
+
+|`Model`|Encoder|Tokenizer|
+|---|---|---|
+|1 Query+Code Path|Bert 256/2/8/32|BPE 30K subtokenized|
+
+|`Training`|epochs|lr|loss|batch size|seed|epoch duration|max code tokens|
+|---|---|---|---|---|---|---|
+||10|0.0001|cross_entropy|768|0|~30mn|200|
+
+###### W&B run
+
+https://app.wandb.ai/mandubian/codenets/runs/5jbus5as?workspace=user-mandubian
+
+
+###### Metrics
+
+|Max MRR|Train|Val|
+|---|---|---|
+||0.7346|0.609|
+
+|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|   |**0.151**|0.09706|0.2014|0.1036|0.1299|0.1894|0.1846|
+
+###### Analysis
+
+Results in MRR are almost the same.
+
+NDCG is lower than both previous experiments with same model for all language except java that seems to get light advantage from this tokenizer. This is a bit surprising to me: is it due to the fact that sub-tokenization doesn't really bring anything or that smaller embedding/BERT can't take advantage from it? We need to experiment with a bigger embedding and model to check that.
+
 ----
 
 #### Next experiments

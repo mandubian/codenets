@@ -29,6 +29,7 @@ pyhocon = "^0.3.54"
 annoy = "^1.16.3"
 tables = "^3.6.1"
 sentence_transformers = "*"
+tree_sitter = "*"
 
 [tool.poetry.dev-dependencies]
 black = "19.3b0"

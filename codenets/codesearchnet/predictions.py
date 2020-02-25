@@ -160,7 +160,9 @@ def run(args, tag_in_vcs=False) -> None:
             predictions = []
             # (codes_encoded_df, codes_masks_df, definitions) = get_language_defs(language, training_ctx, language_token)
 
-            code_embeddings, definitions = compute_code_encodings_from_defs(language, training_ctx, language_token)
+            code_embeddings, definitions = compute_code_encodings_from_defs(
+                language, training_ctx, language_token, batch_length=1024
+            )
             logger.info(f"Building Annoy Index of length {len(code_embeddings.values[0])}")
             indices: AnnoyIndex = AnnoyIndex(len(code_embeddings.values[0]), "angular")
             # idx = 0

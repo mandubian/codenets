@@ -20,6 +20,7 @@ from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, DatasetType
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.training_ctx import ModelAndAdamWRecordable
+from codenets.utils import _to_subtoken_stream
 
 from codenets.codesearchnet.query_code_siamese.model import QueryCodeSiamese
 from codenets.codesearchnet.query_code_siamese.dataset import build_lang_dataset_siamese_tokenizer
@@ -218,7 +219,12 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
             data_params = self.test_data_params
             dirs = self.test_dirs
 
+        if data_params.use_subtokens:
+            logger.info("Using SubTokenization")
+
         def sample_update(tpe: str, lang: str, tokens: List[str]) -> str:
+            if data_params.use_subtokens:
+                tokens = list(_to_subtoken_stream(tokens, mark_subtoken_end=False))
             if tpe == "code":
                 return f"{lang} <lg> {' '.join(tokens)}\r\n"
             elif tpe == "query":

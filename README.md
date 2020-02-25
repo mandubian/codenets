@@ -461,7 +461,7 @@ We take the same model with small emnedding but accept up to 400 code tokens for
 |1 Query+Code Path|Bert 256/2/8/32|BPE 30K|
 
 |`Training`|epochs|lr|loss|batch size|seed|epoch duration|max code tokens|
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|
 ||10|0.0001|cross_entropy|768|0|~30mn|400|
 
 ###### W&B run
@@ -503,7 +503,7 @@ We take the same model with small emnedding but accept up to 400 code tokens for
 |1 Query+Code Path|Bert 256/2/8/32|BPE 30K subtokenized|
 
 |`Training`|epochs|lr|loss|batch size|seed|epoch duration|max code tokens|
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|
 ||10|0.0001|cross_entropy|768|0|~30mn|200|
 
 ###### W&B run

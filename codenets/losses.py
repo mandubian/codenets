@@ -20,7 +20,7 @@ class LossAndSimilarityScore(nn.Module):
             ground_similarityx2 (torch.Tensor): The second tensor [B x T x 1].
 
         Returns:
-            Tuple[torch.tensor, torch.tensor]: loss [B x 1], similarity [B x 1]
+            Tuple[torch.tensor, torch.tensor]: total loss for batch [1], loss per sample [B x 1], similarity [B x 1]
         """
         pass
 
@@ -54,7 +54,8 @@ class CosineSimilarityScoreAndMarginLoss(LossAndSimilarityScore):
 
         per_sample_losses = per_sample_losses * code_lang_weights
 
-        return per_sample_losses, similarity_scores  # B x 1, B x 1
+        total_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
+        return total_loss, similarity_scores  # B x 1, B x 1
 
 
 class SoftmaxCrossEntropyLossAndSimilarityScore(LossAndSimilarityScore):
@@ -80,7 +81,9 @@ class SoftmaxCrossEntropyLossAndSimilarityScore(LossAndSimilarityScore):
 
         per_sample_losses = per_sample_losses * code_lang_weights
 
-        return per_sample_losses, similarity_scores
+        total_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
+
+        return total_loss, similarity_scores
 
 
 class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
@@ -97,6 +100,7 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
         code_lang_weights: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # basic vector product
+
         logits = torch.mm(query_embeddings, code_embeddings.t())  # B x B
         # keep them as similarity score (the highest the most similar)
         similarity_scores = logits
@@ -112,7 +116,9 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
 
         per_sample_losses = per_sample_losses * code_lang_weights
 
-        return per_sample_losses, similarity_scores
+        total_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
+
+        return total_loss, similarity_scores
 
 
 def load_loss_and_similarity_function(loss_config: ConfigTree, device: torch.device) -> LossAndSimilarityScore:
@@ -125,8 +131,10 @@ def load_loss_and_similarity_function(loss_config: ConfigTree, device: torch.dev
     elif loss_config["type"] == "lambda_loss":
         logger.info("Initializing Lambda Loss")
         return LambdaLossAndSimilarityScore(device)
+    elif loss_config["type"] == "approx_ndcg_loss":
+        return ApproxNDCGLossAndSimilarityScore(device)
     else:
-        raise ValueError("loss.type can be softmax_cross_entropy or ...")
+        raise ValueError("loss.type can be softmax_cross_entropy or lambda_loss or approx_ndcg_loss...")
 
 
 def ndcgLoss1_scheme(G, D, *args):
@@ -173,7 +181,7 @@ class LambdaLossAndSimilarityScore(LossAndSimilarityScore):
         device: torch.device,
         weighing_scheme="ndcgLoss2_scheme",
         scheme_func=ndcgLoss2_scheme,
-        k=None,
+        k=100,
         eps=1e-10,
         sigma=1.0,
         mu=10.0,
@@ -199,9 +207,14 @@ class LambdaLossAndSimilarityScore(LossAndSimilarityScore):
         code_lang_weights: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # basic vector product
-        y_pred = torch.mm(query_embeddings, code_embeddings.t())  # B x B
+        # y_pred = torch.mm(query_embeddings, code_embeddings.t())  # B x B
+        y_pred = cosine_similarities(query_embeddings, code_embeddings)
         # we are in the binary case
-        y_true = torch.diag(ground_similarity)
+        # y_true = torch.diag(torch.diagonal(ground_similarity))
+        if len(ground_similarity.shape) == 1:
+            y_true = torch.diag(ground_similarity)
+        else:
+            y_true = ground_similarity
 
         # keep them as similarity score (the highest the most similar)
         similarity_scores = y_pred
@@ -209,19 +222,26 @@ class LambdaLossAndSimilarityScore(LossAndSimilarityScore):
         y_pred_sorted, indices_pred = y_pred.sort(descending=True, dim=-1)
         y_true_sorted, _ = y_true.sort(descending=True, dim=-1)
 
+        true_sorted_by_preds = torch.gather(y_true, dim=1, index=indices_pred)
+
         # logger.debug(f"y_pred {y_pred}")
         # logger.debug(f"y_pred_sorted {y_pred_sorted}")
         # logger.debug(f"y_true_sorted {y_true_sorted}")
+        # logger.debug(f"true_sorted_by_preds {true_sorted_by_preds}")
 
-        true_sorted_by_preds = torch.gather(y_true, dim=1, index=indices_pred)
         true_diffs = true_sorted_by_preds[:, :, None] - true_sorted_by_preds[:, None, :]
+        # true_diffs = true_diffs[:, :, 0].squeeze()
         padded_pairs_mask = torch.isfinite(true_diffs).to(self.device)
 
         if self.weighing_scheme != "ndcgLoss1_scheme":
             padded_pairs_mask = padded_pairs_mask & (true_diffs > 0)
 
-        ndcg_at_k_mask = torch.zeros((y_pred.shape[1], y_pred.shape[1]), dtype=torch.bool, device=self.device)
-        ndcg_at_k_mask[: self.k, : self.k] = 1
+        ndcg_at_k_mask = torch.zeros(
+            (y_pred.shape[0], y_pred.shape[1], y_pred.shape[1]), dtype=torch.bool, device=self.device
+        )
+        ndcg_at_k_mask[:, : self.k, : self.k] = 1
+
+        # logger.debug(f"ndcg_at_k_mask {ndcg_at_k_mask.shape}")
 
         # Here we clamp the -infs to get correct gains and ideal DCGs (maxDCGs)
         true_sorted_by_preds.clamp_(min=0.0)
@@ -241,16 +261,14 @@ class LambdaLossAndSimilarityScore(LossAndSimilarityScore):
         if self.weighing_scheme is None:
             weights = 1.0
         else:
-            weights = self.scheme_func(G, D, self.mu, true_sorted_by_preds)  # type: ignore
-
-        # logger.debug(f"weights {weights}")
+            weights = self.scheme_func(G, D, self.mu, true_sorted_by_preds)
 
         # We are clamping the array entries to maintain correct backprop (log(0) and division by 0)
         scores_diffs = (y_pred_sorted[:, :, None] - y_pred_sorted[:, None, :]).clamp(min=-1e8, max=1e8)
+        # scores_diffs = scores_diffs[:, :, 0].squeeze()
+        # logger.debug(f"scores_diffs {scores_diffs}")
         scores_diffs[torch.isnan(scores_diffs)] = 0.0
         weighted_probas = (torch.sigmoid(self.sigma * scores_diffs).clamp(min=self.eps) ** weights).clamp(min=self.eps)
-
-        # logger.debug(f"weighted_probas {weighted_probas}")
 
         if self.reduction_log == "natural":
             losses = torch.log(weighted_probas)
@@ -259,15 +277,91 @@ class LambdaLossAndSimilarityScore(LossAndSimilarityScore):
         else:
             raise ValueError("Reduction logarithm base can be either natural or binary")
 
-        masked_losses = losses[padded_pairs_mask & ndcg_at_k_mask]
+        # masked_losses = losses[padded_pairs_mask & ndcg_at_k_mask]
+        # masked_losses = losses[padded_pairs_mask]
+        losses[~padded_pairs_mask] = 0.0
+        # masked_losses = losses
+        # masked_losses = losses * padded_pairs_mask.int().float()
         if self.reduction == "sum":
-            loss = -torch.sum(masked_losses)
+            per_sample_losses = torch.sum(losses, dim=[1, 2]) * code_lang_weights
+            total_loss = -torch.sum(per_sample_losses)
         elif self.reduction == "mean":
-            loss = -torch.mean(masked_losses)
+            per_sample_losses = torch.mean(losses, dim=[1, 2]) * code_lang_weights
+            total_loss = -torch.mean(per_sample_losses)
         else:
             raise ValueError("Reduction method can be either sum or mean")
 
-        return loss, similarity_scores
+        return total_loss, similarity_scores
+
+
+# Directly copied from original repository AllRank under Apache 2 license
+# https://github.com/allegro/allRank/tree/master/allrank
+#
+class ApproxNDCGLossAndSimilarityScore(LossAndSimilarityScore):
+    def __init__(self, device: torch.device, eps=1e-10, alpha=1.0):
+        super(ApproxNDCGLossAndSimilarityScore, self).__init__()
+        self.device = device
+        self.eps = eps
+        self.alpha = alpha
+
+    def forward(  # type: ignore
+        self,
+        query_embeddings: torch.Tensor,
+        code_embeddings: torch.Tensor,
+        ground_similarity: torch.Tensor,
+        code_lang_weights: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # basic vector product
+        # y_pred = torch.mm(query_embeddings, code_embeddings.t())  # B x B
+        y_pred = cosine_similarities(query_embeddings, code_embeddings)
+        # logger.debug(f"y_pred {y_pred}")
+        # we are in the binary case
+        # y_true = torch.diag(torch.diagonal(ground_similarity))
+        if len(ground_similarity.shape) == 1:
+            y_true = torch.diag(ground_similarity).float().to(self.device)
+        else:
+            y_true = ground_similarity.float().to(self.device)
+
+        # keep them as similarity score (the highest the most similar)
+        similarity_scores = y_pred
+
+        y_pred_sorted, indices_pred = y_pred.sort(descending=True, dim=-1)
+        y_true_sorted, _ = y_true.sort(descending=True, dim=-1)
+
+        # After sorting, we can mask out the pairs of indices (i, j) containing index of a padded element.
+        true_sorted_by_preds = torch.gather(y_true, dim=1, index=indices_pred)
+        true_diffs = true_sorted_by_preds[:, :, None] - true_sorted_by_preds[:, None, :]
+        padded_pairs_mask = torch.isfinite(true_diffs).to(self.device)
+        padded_pairs_mask.diagonal(dim1=-2, dim2=-1).zero_()
+
+        # Here we clamp the -infs to get correct gains and ideal DCGs (maxDCGs)
+        true_sorted_by_preds.clamp_(min=0.0)
+        y_true_sorted.clamp_(min=0.0)
+
+        # logger.info(f"y_true_sorted {y_true_sorted}")
+
+        # Here we find the gains, discounts and ideal DCGs per slate.
+        pos_idxs = torch.arange(1, y_pred.shape[1] + 1).to(self.device)
+        D = torch.log2(1.0 + pos_idxs.float())[None, :]
+        maxDCGs = torch.sum((torch.pow(2, y_true_sorted) - 1) / D, dim=-1).clamp(min=self.eps)
+        G = (torch.pow(2, true_sorted_by_preds) - 1) / maxDCGs[:, None]
+
+        # Here we approximate the ranking positions according to Eqs 19-20 and later approximate NDCG (Eq 21)
+        scores_diffs = y_pred_sorted[:, :, None] - y_pred_sorted[:, None, :]
+        scores_diffs[~padded_pairs_mask] = 0.0
+        approx_pos = 1.0 + torch.sum(
+            padded_pairs_mask.float() * (torch.sigmoid(-self.alpha * scores_diffs).clamp(min=self.eps)), dim=-1
+        )
+        approx_D = torch.log2(1.0 + approx_pos)
+        approx_NDCG = torch.sum((G / approx_D), dim=-1)
+        # logger.info(f"y_pred {y_pred}")
+        # logger.info(f"y_true {y_true}")
+        # logger.info(f"true_sorted_by_preds {true_sorted_by_preds}")
+        # logger.info(f"approx_NDCG {approx_NDCG}")
+        per_sample_losses = approx_NDCG * code_lang_weights
+        total_loss = -torch.mean(per_sample_losses)
+
+        return total_loss, similarity_scores
 
 
 # def lambda_loss(

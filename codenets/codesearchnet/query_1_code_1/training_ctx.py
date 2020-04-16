@@ -98,7 +98,7 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         torch.set_grad_enabled(False)
         return True
 
-    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor]:
         """
         Perform forward path on batch
         
@@ -119,12 +119,11 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
             code_tokens=code_tokens,
             code_tokens_mask=code_tokens_mask,
         )
-        per_sample_losses, similarity_scores = self.losses_scores_fn(
+        batch_total_loss, similarity_scores = self.losses_scores_fn(
             query_embedding, code_embedding, similarity, code_lang_weights
         )
-        avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
 
-        return (avg_loss, per_sample_losses, similarity_scores)
+        return (batch_total_loss, similarity_scores)
 
     def backward_optimize(self, loss: Tensor) -> Tensor:
         """Perform backward pass from loss"""

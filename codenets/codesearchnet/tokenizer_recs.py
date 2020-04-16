@@ -62,6 +62,10 @@ class TokenizerRecordable(ABC, Recordable):
     def decode_sequences(self, tokens_sequences: Iterable[List[int]]) -> List[str]:
         pass
 
+    @abstractmethod
+    def add_special_tokens(self, special_tokens: List[str]) -> bool:
+        pass
+
 
 class BpeVocabularyTokenizerRecordable(TokenizerRecordable):
     def __init__(self, vocab: BpeVocabulary):
@@ -128,6 +132,10 @@ class BpeVocabularyTokenizerRecordable(TokenizerRecordable):
 
     def decode_sequences(self, tokens_sequences: Iterable[List[int]]) -> List[str]:
         return list(self.vocab.inverse_transform(tokens_sequences))
+
+    def add_special_tokens(self, special_tokens: List[str]) -> bool:
+        self.vocab.add_special_tokens(special_tokens)
+        return True
 
 
 def build_most_common_tokens(

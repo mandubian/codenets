@@ -68,7 +68,6 @@ class QueryCodeSiamese(RecordableTorchModule):
         # lang_id = str(languages[0].item())
         query_seq_outputs = self.encoder(query_tokens, query_tokens_mask)  # [B x S x H]
         code_seq_outputs = self.encoder(code_tokens, code_tokens_mask)  # [B x S x H]
-
         if self.pooler is not None:
             return (
                 self.pooler(query_seq_outputs[0], query_tokens_mask),

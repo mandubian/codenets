@@ -9,25 +9,33 @@ import time
 
 # from torch import nn
 import numpy as np
+from torch.utils.data import DataLoader
 from transformers import AdamW
 from pyhocon import ConfigTree
 from tokenizers import BPETokenizer
 from tokenizers.normalizers import BertNormalizer
 from tokenizers.trainers import BpeTrainer
+from sentence_transformers import SentenceTransformer
+
 from codenets.recordable import Recordable, RecordableMapping, NoneRecordable, DictRecordable
-from codenets.codesearchnet.dataset_utils import LangDataset
+from codenets.codesearchnet.dataset_utils import ConcatNamedDataset
 from codenets.codesearchnet.data import DatasetParams
+from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, DatasetType
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.training_ctx import ModelAndAdamWRecordable
 from codenets.utils import _to_subtoken_stream
 
 from codenets.codesearchnet.query_code_siamese.model import QueryCodeSiamese
-from codenets.codesearchnet.query_code_siamese.dataset import build_lang_dataset_siamese_tokenizer
+from codenets.codesearchnet.query_code_siamese.dataset import (
+    build_lang_dataset_siamese_tokenizer,
+    build_lang_dataset_ast,
+)
 from codenets.codesearchnet.huggingface.tokenizer_recs import (
     HuggingfaceBPETokenizerRecordable,
     build_huggingface_token_files,
 )
+from codenets.codesearchnet.code_ast.ast_utils import load_special_tokens, TreeSitterParser
 
 
 class QueryCodeSiameseModelAndAdamW(ModelAndAdamWRecordable):
@@ -101,7 +109,7 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
         torch.set_grad_enabled(False)
         return True
 
-    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor]:
         """
         Perform forward path on batch
         
@@ -112,9 +120,17 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
         Returns:
             Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, losses per sample in batch, tensor matrix of similarity scores between all samples)
         """
-        languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, code_lang_weights = [
-            t.to(self.device) for t in batch
-        ]
+        idx, languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, code_lang_weights = (
+            batch
+        )
+        languages = languages.to(self.device)
+        similarity = similarity.to(self.device)
+        query_tokens = query_tokens.to(self.device)
+        query_tokens_mask = query_tokens_mask.to(self.device)
+        code_tokens = code_tokens.to(self.device)
+        code_tokens_mask = code_tokens_mask.to(self.device)
+        code_lang_weights = code_lang_weights.to(self.device)
+
         (query_embedding, code_embedding) = self.model(
             languages=languages,
             query_tokens=query_tokens,
@@ -123,12 +139,13 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
             code_tokens_mask=code_tokens_mask,
             lang_weights=code_lang_weights,
         )
-        per_sample_losses, similarity_scores = self.losses_scores_fn(
+
+        total_loss, similarity_scores = self.losses_scores_fn(
             query_embedding, code_embedding, similarity, code_lang_weights
         )
-        avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
-
-        return (avg_loss, per_sample_losses, similarity_scores)
+        # avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
+        # logger.debug(f"total_loss {total_loss}")
+        return (total_loss, similarity_scores)
 
     def backward_optimize(self, loss: Tensor) -> Tensor:
         """Perform backward pass from loss"""
@@ -162,9 +179,14 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         return self.tokenizer.encode_tokens(tokens, max_length)
 
-    def build_lang_dataset(self, dataset_type: DatasetType) -> LangDataset:
+    def decode_query_tokens(self, tokens: Iterable[List[int]]) -> List[str]:
+        return self.tokenizer.decode_sequences(tokens)
+
+    def build_lang_dataset(self, dataset_type: DatasetType) -> ConcatNamedDataset:
         """Build language dataset using custom training context tokenizers"""
         common_toks: Dict[int, List[int]]
+
+        use_ast: bool = False
 
         if dataset_type == DatasetType.TRAIN:
             dirs = self.train_dirs
@@ -180,33 +202,91 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
                     for lang_toks_ids in lang_toks_idss:
                         tok_ids.extend(lang_toks_ids.tolist())
                     common_toks[lang_idx] = tok_ids
+            use_ast = self.train_data_params.use_ast != "none"
+
         elif dataset_type == DatasetType.VAL:
             dirs = self.val_dirs
             name = f"val_{self.training_tokenizer_type}"
             data_params = self.val_data_params
             common_toks = {}
+            use_ast = self.val_data_params.use_ast != "none"
 
         elif dataset_type == DatasetType.TEST:
             dirs = self.test_dirs
             name = f"test_{self.training_tokenizer_type}"
             data_params = self.test_data_params
             common_toks = {}
+            use_ast = self.test_data_params.use_ast != "none"
 
-        return build_lang_dataset_siamese_tokenizer(
-            dirs=dirs,
-            name=name,
-            data_params=data_params,
-            tokenizer=self.tokenizer,
-            lang_token="<lg>",
-            query_token="<qy>",
-            fraction_using_func_name=data_params.fraction_using_func_name,
-            query_random_token_frequency=data_params.query_random_token_frequency,
-            common_tokens=common_toks,
-            use_lang_weights=data_params.use_lang_weights,
-            lang_ids=data_params.lang_ids,
-            pickle_path=self.pickle_path,
-            parallelize=self.train_data_params.parallelize,
-        )
+        if data_params.query_embeddings == "sbert":
+            logger.info(f"Activating SBERT {dataset_type.value} Embeddings")
+            model = self.conf["embeddings.sbert.model"]
+            self.embedding_model = SentenceTransformer(model)
+
+        if not use_ast:
+            return build_lang_dataset_siamese_tokenizer(
+                dirs=dirs,
+                name=name,
+                data_params=data_params,
+                tokenizer=self.tokenizer,
+                lang_token="<lg>",
+                query_token="<qy>",
+                fraction_using_func_name=data_params.fraction_using_func_name,
+                query_random_token_frequency=data_params.query_random_token_frequency,
+                common_tokens=common_toks,
+                use_lang_weights=data_params.use_lang_weights,
+                lang_ids=data_params.lang_ids,
+                pickle_path=self.pickle_path,
+                parallelize=self.train_data_params.parallelize,
+                embedding_model=self.embedding_model,
+            )
+        else:
+            logger.debug("Building Dataset using AST")
+
+            parser = TreeSitterParser(
+                langs=list(data_params.lang_ids.keys()),
+                added_nodes=data_params.ast_added_nodes,
+                skip_node_types=data_params.ast_skip_node_types,
+            )
+
+            return build_lang_dataset_ast(
+                dirs=dirs,
+                name=name,
+                data_params=data_params,
+                tokenizer=self.tokenizer,
+                ast_parser=parser,
+                query_token="<qy>",
+                common_tokens=common_toks,
+                pickle_path=self.pickle_path,
+            )
+
+    def build_lang_dataloader(self, dataset_type: DatasetType) -> DataLoader:
+        """Build language dataset using custom training context tokenizers"""
+        dataset = self.build_lang_dataset(dataset_type)
+
+        batch_size: int
+        if dataset_type == DatasetType.TRAIN:
+            batch_size = self.train_batch_size
+        elif dataset_type == DatasetType.VAL:
+            batch_size = self.val_batch_size
+        elif dataset_type == DatasetType.TEST:
+            batch_size = self.test_batch_size
+
+        collate_fn = dataset.get_collate_fn()
+        if collate_fn is not None:
+            logger.debug("Using custom collate_fn")
+            return DataLoader(
+                dataset=dataset,
+                batch_size=batch_size,
+                sampler=BalancedBatchSchedulerSampler(dataset=dataset, batch_size=batch_size),
+                collate_fn=collate_fn,
+            )
+        else:
+            return DataLoader(
+                dataset=dataset,
+                batch_size=batch_size,
+                # sampler=BalancedBatchSchedulerSampler(dataset=dataset, batch_size=batch_size),
+            )
 
     def build_tokenizers(self, from_dataset_type: DatasetType) -> bool:
         if from_dataset_type == DatasetType.TRAIN:

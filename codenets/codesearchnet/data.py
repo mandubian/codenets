@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields as datafields
 import numpy as np
 
 from typing import Dict, TypeVar, Type, List
+from dataclasses import field
 
 
 @dataclass
@@ -26,6 +27,11 @@ class DatasetParams:
     parallelize: bool
     use_lang_weights: bool = False  # for backward compat
     query_random_token_frequency: float = 0.2
+    query_embeddings: str = "none"
+    use_ast: str = "none"
+    ast_added_nodes: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    ast_skip_node_types: Dict[str, List[str]] = field(default_factory=dict)
+    ast_special_tokens_files: List[str] = field(default_factory=list)
 
 
 T_InputFeatures = TypeVar("T_InputFeatures", bound="InputFeatures")

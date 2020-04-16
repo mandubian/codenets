@@ -83,17 +83,14 @@ def run_epoch(
     training_ctx.zero_grad()
     with tqdm(total=len(dataloader)) as t_batch:
         for batch_idx, batch in enumerate(dataloader):
-            per_sample_loss, per_sample_losses, similarity_scores = training_ctx.forward(batch, batch_idx)
+            batch_total_loss, similarity_scores = training_ctx.forward(batch, batch_idx)
 
             if is_train:
-                training_ctx.backward_optimize(per_sample_loss)
+                training_ctx.backward_optimize(batch_total_loss)
                 training_ctx.zero_grad()
 
             batch_size = BatchSize(batch[0].size()[0])
-            batch_loss = BatchLoss(per_sample_loss.item())
-            # total_loss, avg_loss, total_mrr, avg_mrr, total_size = compute_loss_mrr(
-            #     similarity_scores, batch_loss, batch_size, total_loss, total_mrr, total_size
-            # )
+            batch_loss = BatchLoss(batch_total_loss.item())
 
             total_loss, avg_loss, total_mrr, avg_mrr, total_ndcg, avg_ndcg, total_size = compute_loss_mrr_ndcg(
                 batch,
@@ -112,7 +109,7 @@ def run_epoch(
             else:
                 training_ctx.val_global_step += batch_size
 
-            t_batch.set_postfix({f"{prefix}_loss": f"{per_sample_loss.item():10}"})
+            t_batch.set_postfix({f"{prefix}_loss": f"{avg_loss:10}"})
             t_batch.update(1)
 
             if batch_idx % log_interval == 0:
@@ -198,21 +195,24 @@ def run(args, tag_in_vcs=False) -> None:
 
     # Build Train Dataloader
     if conf is None or not conf["training.short_circuit"]:
-        train_dataset = training_ctx.build_lang_dataset(DatasetType.TRAIN)
-        train_dataloader = DataLoader(
-            dataset=train_dataset,
-            batch_size=training_ctx.train_batch_size,
-            sampler=BalancedBatchSchedulerSampler(dataset=train_dataset, batch_size=training_ctx.train_batch_size),
-        )
+        # train_dataset = training_ctx.build_lang_dataset(DatasetType.TRAIN)
+        # train_dataloader = DataLoader(
+        #     dataset=train_dataset,
+        #     batch_size=training_ctx.train_batch_size,
+        #     sampler=BalancedBatchSchedulerSampler(dataset=train_dataset, batch_size=training_ctx.train_batch_size),
+        # )
+        train_dataloader = training_ctx.build_lang_dataloader(DatasetType.TRAIN)
+
         logger.info(f"Built train_dataloader [Length:{len(train_dataloader)} x Batch:{training_ctx.train_batch_size}]")
 
     # Build Val Dataloader
-    val_dataset = training_ctx.build_lang_dataset(DatasetType.VAL)
-    val_dataloader = DataLoader(
-        dataset=val_dataset,
-        batch_size=training_ctx.val_batch_size,
-        sampler=BalancedBatchSchedulerSampler(dataset=val_dataset, batch_size=training_ctx.val_batch_size),
-    )
+    # val_dataset = training_ctx.build_lang_dataset(DatasetType.VAL)
+    # val_dataloader = DataLoader(
+    #     dataset=val_dataset,
+    #     batch_size=training_ctx.val_batch_size,
+    #     sampler=BalancedBatchSchedulerSampler(dataset=val_dataset, batch_size=training_ctx.val_batch_size),
+    # )
+    val_dataloader = training_ctx.build_lang_dataloader(DatasetType.VAL)
     logger.info(f"Built val_dataloader [Length:{len(val_dataloader)} x Batch:{training_ctx.val_batch_size}]")
 
     with trange(training_ctx.start_epoch, training_ctx.epochs) as t_epoch:

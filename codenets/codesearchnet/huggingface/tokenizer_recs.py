@@ -77,6 +77,10 @@ class PreTrainedTokenizerRecordable(TokenizerRecordable):
     def decode_sequences(self, tokens_sequences: Iterable[List[int]]) -> List[str]:
         return self.vocab.decode_batch(tokens_sequences)
 
+    def add_special_tokens(self, special_tokens: List[str]) -> bool:
+        self.vocab.add_special_tokens(special_tokens)
+        return True
+
 
 class BertTokenizerRecordable(PreTrainedTokenizerRecordable):
     def __init__(self, vocab: BertTokenizer):
@@ -168,6 +172,10 @@ class HuggingfaceBPETokenizerRecordable(TokenizerRecordable):
             merges_file=str(full_dir / f"{full_classname(cls)}-merges.txt"),
         )
         return HuggingfaceBPETokenizerRecordable(tokenizer)
+
+    def add_special_tokens(self, special_tokens: List[str]) -> bool:
+        self.vocab.add_special_tokens(special_tokens)
+        return True
 
 
 def build_huggingface_token_files(

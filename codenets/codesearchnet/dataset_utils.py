@@ -5,17 +5,23 @@
 from abc import abstractmethod
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Iterator, Callable
+import re
 
 import numpy as np
 import random
 import torch
+import os
+from pathlib import Path
 from torch.utils.data import Dataset, TensorDataset, ConcatDataset, RandomSampler, Sampler
-
+from torch import Tensor
 from dpu_utils.codeutils import split_identifier_into_parts
 
 from loguru import logger
 import functools
-
+import sklearn
+from sklearn.metrics.pairwise import pairwise_distances, cosine_similarity
+import pandas as pd
+from tqdm import tqdm
 from enum import Enum
 
 from codenets.codesearchnet.data import InputFeatures
@@ -117,6 +123,10 @@ def load_data_from_sample(
 
 class ConcatNamedDataset(Dataset):
     @abstractmethod
+    def get_collate_fn(self) -> Optional[Callable[[List[Any]], List[Tensor]]]:
+        return None
+
+    @abstractmethod
     def get_datasets_nb(self) -> int:
         pass
 
@@ -146,7 +156,7 @@ class ConcatNamedDataset(Dataset):
 
 
 class FeatsDataset(Dataset):
-    def __init__(self, samples: List[InputFeatures], transform: Callable[[InputFeatures], List[torch.Tensor]]):
+    def __init__(self, samples: List[InputFeatures], transform: Callable[[InputFeatures, int], List[torch.Tensor]]):
         self.samples = samples
         self.transform = transform
 
@@ -156,7 +166,23 @@ class FeatsDataset(Dataset):
 
     def __getitem__(self, idx) -> List[torch.Tensor]:
         """Get dataset item by idx"""
-        s = self.transform(self.samples[idx])
+        s = self.transform(self.samples[idx], idx)
+        return s
+
+
+class DFDataset(Dataset):
+    def __init__(self, df: pd.DataFrame, transform: Callable[[pd.Series, int], List[torch.Tensor]]):
+        self.df = df
+        self.transform = transform
+
+    def __len__(self):
+        """Get dataset length"""
+        return self.df.shape[0]
+        # return len(self.values)
+
+    def __getitem__(self, idx) -> List[torch.Tensor]:
+        """Get dataset item by idx"""
+        s = self.transform(self.df.iloc[idx], idx)
         return s
 
 
@@ -186,75 +212,6 @@ class InputFeaturesToNpArray(object):
         )
 
 
-# class InputFeaturesToNpArray_RandomReplace(object):
-#     def __init__(
-#         self,
-#         lang_weights: Optional[Dict[int, float]],
-#         fraction_using_func_name: float,
-#         query_random_token_frequency: float,
-#         common_tokens: List[int],
-#     ):
-#         self.lang_weights = lang_weights
-#         self.fraction_using_func_name = fraction_using_func_name
-#         self.query_random_token_frequency = query_random_token_frequency
-#         self.common_tokens = common_tokens
-
-#     def __call__(self, features: Iterable[InputFeatures]) -> List[np.ndarray]:
-
-#         if random.uniform(0.0, 1.0) < self.fraction_using_func_name:
-#             all_query_tokens = [f.query_tokens for f in features]
-#             all_query_tokens_mask = [f.query_tokens_mask for f in features]
-#         else:
-#             all_query_tokens = [f.query_docstring_tokens for f in features]
-#             all_query_tokens_mask = [f.query_docstring_tokens_mask for f in features]
-
-#         # only replace tokens with most common tokens if there are
-#         if len(self.common_tokens) > 0:
-#             for i, (qt, qm) in enumerate(zip(all_query_tokens, all_query_tokens_mask)):
-#                 total_length = len(qt)
-#                 length_without_padding = int(np.sum(qm))
-#                 insert_indices = np.array([random.uniform(0.0, 1.0) for _ in range(length_without_padding)])
-#                 insert_indices = insert_indices < self.query_random_token_frequency
-#                 insert_indices = np.flatnonzero(insert_indices)
-#                 if len(insert_indices) > 0:
-#                     tokens_to_add = [
-#                         random.randrange(0, len(self.common_tokens)) for _ in range(len(insert_indices))
-#                     ]  # select one of the most common tokens for each location
-#                     tokens_to_add = [
-#                         self.common_tokens[token] for token in tokens_to_add
-#                     ]  # get the ID corresponding to the token we're adding
-#                     to_insert = 0
-#                     output_query = np.zeros(total_length, dtype=int)
-#                     for idx in range(
-#                         min(length_without_padding, total_length - len(insert_indices))
-#                     ):  # iterate only through the beginning of the array where changes are being made
-#                         if to_insert < len(insert_indices) and idx == insert_indices[to_insert]:
-#                             output_query[idx + to_insert] = tokens_to_add[to_insert]
-#                             to_insert += 1
-#                         output_query[idx + to_insert] = qt[idx]
-#                     all_query_tokens[i] = output_query
-#                     # Add the needed number of non-padding values to the mask:
-#                     all_query_tokens_mask[i][length_without_padding : length_without_padding + len(tokens_to_add)] = 1.0
-
-#         all_code_tokens = [f.code_tokens for f in features]
-#         all_code_tokens_mask = [f.code_tokens_mask for f in features]
-#         all_languages = [f.language for f in features]
-#         all_similarity = [f.similarity for f in features]
-#         if self.lang_weights is not None:
-#             all_lang_weights = [self.lang_weights[f.language] for f in features]
-#         else:
-#             all_lang_weights = [1.0 for _ in features]
-#         return [
-#             all_languages,
-#             all_similarity,
-#             all_query_tokens,
-#             all_query_tokens_mask,
-#             all_code_tokens,
-#             all_code_tokens_mask,
-#             all_lang_weights,
-#         ]
-
-
 class InputFeaturesToNpArray_RandomReplace(object):
     def __init__(
         self,
@@ -268,7 +225,7 @@ class InputFeaturesToNpArray_RandomReplace(object):
         self.query_random_token_frequency = query_random_token_frequency
         self.common_tokens = common_tokens
 
-    def __call__(self, feat: InputFeatures) -> List[np.ndarray]:
+    def __call__(self, feat: InputFeatures, idx: int) -> List[np.ndarray]:
 
         if random.uniform(0.0, 1.0) < self.fraction_using_func_name:
             query_tokens = feat.query_tokens
@@ -313,12 +270,83 @@ class InputFeaturesToNpArray_RandomReplace(object):
                 # Add the needed number of non-padding values to the mask:
                 query_tokens_mask[length_without_padding : length_without_padding + len(tokens_to_add)] = 1.0
 
-        return [language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+        return [idx, language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+
+
+class FullNpArrayToFinalNpArray(object):
+    def __init__(
+        self,
+        lang_weights: Optional[Dict[int, float]],
+        fraction_using_func_name: float,
+        query_random_token_frequency: float,
+        common_tokens: Dict[int, List[int]],
+    ):
+        self.lang_weights = lang_weights
+        self.fraction_using_func_name = fraction_using_func_name
+        self.query_random_token_frequency = query_random_token_frequency
+        self.common_tokens = common_tokens
+
+    def __call__(self, feat: pd.Series, idx: int) -> List[np.ndarray]:
+
+        if random.uniform(0.0, 1.0) < self.fraction_using_func_name:
+            query_tokens = feat[2]
+            query_tokens_mask = feat[3]
+        else:
+            query_tokens = feat[4]
+            query_tokens_mask = feat[5]
+
+        code_tokens = feat[6]
+        code_tokens_mask = feat[7]
+
+        language = feat[0]
+        similarity = feat[1]
+        if self.lang_weights is not None:
+            lang_weights = self.lang_weights[language]
+        else:
+            lang_weights = 1.0
+
+        return [idx, language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+
+
+class PDSeriesToNpArray(object):
+    def __init__(
+        self,
+        lang_weights: Optional[Dict[int, float]],
+        fraction_using_func_name: float,
+        query_random_token_frequency: float,
+        common_tokens: Dict[int, List[int]],
+    ):
+        self.lang_weights = lang_weights
+        self.fraction_using_func_name = fraction_using_func_name
+        self.query_random_token_frequency = query_random_token_frequency
+        self.common_tokens = common_tokens
+
+    def __call__(self, feat: pd.Series, idx: int) -> List[np.ndarray]:
+
+        if random.uniform(0.0, 1.0) < self.fraction_using_func_name:
+            query_tokens = feat["func_tokens"]
+            query_tokens_mask = feat["func_masks"]
+        else:
+            query_tokens = feat["docstring_tokens"]
+            query_tokens_mask = feat["docstring_masks"]
+
+        code_tokens = feat["code_tokens"]
+        code_tokens_mask = feat["code_masks"]
+
+        language = feat["lang"]
+        similarity = feat["similarity"]
+        if self.lang_weights is not None:
+            lang_weights = self.lang_weights[language]
+        else:
+            lang_weights = 1.0
+
+        return [idx, language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
 
 
 class Tensorize(object):
     def __call__(self, features: Iterable[np.ndarray]) -> List[torch.Tensor]:
-        return [torch.as_tensor(f) for f in features]
+        res = [torch.as_tensor(f) for f in features]
+        return res
 
 
 class Compose(object):
@@ -338,9 +366,11 @@ class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, d):
-        for t in self.transforms:
-            d = t(d)
+    def __call__(self, *args):
+        if len(self.transforms) > 0:
+            d = self.transforms[0](*args)
+            for t in self.transforms[1:]:
+                d = t(d)
         return d
 
     def __repr__(self):
@@ -367,9 +397,15 @@ class LangDataset(ConcatNamedDataset):
         self,
         lang_features: Dict[str, Tuple[int, Iterable[InputFeatures]]],
         lang_ids: Dict[str, int],
-        transform: Callable[[InputFeatures], List[np.ndarray]],
+        transform: Callable[[InputFeatures, int], List[np.ndarray]],
         use_lang_weights: bool = False,
+        # query_embeddings: Optional[Dict[str, Tuple[int, Iterable[np.ndarray]]]] = None,
+        embedding_model=None,
+        tokenizer=None,
+        emb_annoy_path: Path = None,
     ):
+        super(LangDataset, self).__init__()
+
         self.langs: List[str] = list(lang_features.keys())
         self.lang_ids = lang_ids
         # self.datasets: List[TensorDataset] = []
@@ -379,6 +415,54 @@ class LangDataset(ConcatNamedDataset):
         self.lang_indexes: Dict[int, int] = {}
         self.use_lang_weights = use_lang_weights
 
+        def filter_features(samples: List[InputFeatures]) -> List[InputFeatures]:
+            full_bads = 0
+            toks_2_docs = 0
+            docs_2_toks = 0
+            res: List[InputFeatures] = []
+            for s in samples:
+                toks_len = len(s.query_tokens_mask[s.query_tokens_mask != 0])
+                toks = s.query_tokens[: len(s.query_tokens_mask[s.query_tokens_mask != 0])]
+                toks = tokenizer.decode_sequence(toks)
+                toks_1 = re.sub(r"[^a-zA-Z0-9\s]+", "", toks[5:]).strip()
+                docs_len = len(s.query_docstring_tokens_mask[s.query_docstring_tokens_mask != 0])
+                docs = s.query_docstring_tokens[:docs_len]
+                docs = tokenizer.decode_sequence(docs)
+                docs_1 = re.sub(r"[^a-zA-Z0-9\s]+", "", docs[5:]).strip()
+
+                if toks_len < 3 or len(toks_1) == 0:
+                    bad_tok = True
+                else:
+                    bad_tok = False
+
+                if docs_len < 2 or len(docs_1) == 0:
+                    bad_doc = True
+                else:
+                    bad_doc = False
+
+                if not bad_tok and not bad_doc:
+                    res.append(s)
+                elif not bad_tok and bad_doc:
+                    # put tok in doc to force having at least one correct field
+                    toks_2_docs += 1
+                    s.query_docstring_tokens = s.query_tokens
+                    s.query_docstring_tokens_mask = s.query_tokens_mask
+                    res.append(s)
+                elif bad_tok and not bad_doc:
+                    docs_2_toks += 1
+                    # put doc in tok to force having at least one correct field
+                    s.query_tokens = s.query_docstring_tokens
+                    s.query_tokens_mask = s.query_docstring_tokens_mask
+                    res.append(s)
+                else:
+                    # both bad, skip sample
+                    full_bads += 1
+
+            logger.debug(
+                f"Samples before:{len(samples)} after:{len(res)} full_bads:{full_bads} toks_2_docs:{toks_2_docs} docs_2_toks:{docs_2_toks}"
+            )
+            return res
+
         logger.info("Concatenating Datasets")
         lang_features_sorted = sorted(lang_features.items(), key=lambda lf: lf[1][0], reverse=True)
         for idx, (lang, (nb, features)) in enumerate(lang_features_sorted):
@@ -386,35 +470,105 @@ class LangDataset(ConcatNamedDataset):
             self.lang_indexes[lang_id] = idx
             logger.info(f"Adding Language {lang} id:{idx} lang_id:{lang_id} [{nb} samples]")
             self.datasets_len.append((lang_id, lang, nb))
-            # ds = TensorDataset(*self.__tensorize_features(features))
-            ds = FeatsDataset(list(features), transform)
+            fs = list(features)
+            ds = FeatsDataset(filter_features(fs), transform)
             self.datasets.append(ds)
 
-        # self.datasets = sorted(datasets, key=lambda d: len(d), reverse=True)
         self.concat_dataset: ConcatDataset = ConcatDataset(self.datasets)
         logger.info(f"Concat_dataset [{len(self.concat_dataset)} samples]")
 
-    # def __tensorize_features(self, features: Iterable[InputFeatures]) -> Tuple:
-    #     all_query_tokens = torch.as_tensor([f.query_tokens for f in features], dtype=torch.long)
-    #     all_query_tokens_mask = torch.as_tensor([f.query_tokens_mask for f in features], dtype=torch.long)
-    #     all_code_tokens = torch.as_tensor([f.code_tokens for f in features], dtype=torch.long)
-    #     all_code_tokens_mask = torch.as_tensor([f.code_tokens_mask for f in features], dtype=torch.long)
-    #     all_languages = torch.as_tensor([f.language for f in features], dtype=torch.int8)
-    #     all_similarity = torch.as_tensor([f.similarity for f in features], dtype=torch.float)
-    #     if self.use_lang_weights:
-    #         all_lang_weights = torch.as_tensor([self.lang_weights[f.language] for f in features], dtype=torch.float)
-    #     else:
-    #         all_lang_weights = torch.as_tensor([1.0 for _ in features], dtype=torch.float)
+        all_embs_df: pd.DataFrame
+        if embedding_model is not None:
+            from annoy import AnnoyIndex
 
-    #     return (
-    #         all_languages,
-    #         all_similarity,
-    #         all_query_tokens,
-    #         all_query_tokens_mask,
-    #         all_code_tokens,
-    #         all_code_tokens_mask,
-    #         all_lang_weights,
-    #     )
+            annoy_index = AnnoyIndex(768, "angular")
+            if emb_annoy_path is not None and emb_annoy_path.exists():
+                logger.debug(f"Loading Embeddings from AnnoyIndex {emb_annoy_path}")
+                # all_embs_df = pd.read_parquet(emb_parquet_path, columns=["embeddings"])
+
+                annoy_index.load(str(emb_annoy_path))
+
+            else:
+                logger.debug(f"Building Embeddings to AnnoyIndex {emb_annoy_path}")
+                for idx in tqdm(range(0, len(self.concat_dataset))):
+                    sample = self.concat_dataset[idx]
+                    ts = sample[3]
+                    mask = sample[4]
+                    toks = ts.cpu().numpy()[: len(mask[mask != 0])]
+                    s = tokenizer.decode_sequence(toks)
+                    s = re.sub(r"[^a-zA-Z0-9\s]+", "", s[5:]).strip()
+                    embs = embedding_model.encode([s])
+                    annoy_index.add_item(idx, embs[0])
+                annoy_index.build(10)  # 10 trees
+                annoy_index.save(str(emb_annoy_path))
+
+                # samples = [
+                #     self.concat_dataset[i]
+                #     for i in range(
+                #         idx,
+                #         idx + batch_size
+                #         if idx + batch_size < len(self.concat_dataset)
+                #         else len(self.concat_dataset),
+                #     )
+                # ]
+                # query_tokens_masks = [(sample[3], sample[4]) for sample in samples]
+                # toks = [ts.cpu().numpy()[: len(mask[mask != 0])] for (ts, mask) in query_tokens_masks]
+                # toks = tokenizer.decode_sequences(toks)
+                # # removes "<qy> "
+                # toks = [re.sub(r"[^a-zA-Z0-9\s]+", "", t[5:]).strip() for t in toks]
+                # # logger.debug(f"toks {toks}")
+                # embs = embedding_model.encode(toks)
+                # all_embs.extend([[emb] for emb in embs])
+
+                # all_embs_df = pd.DataFrame(all_embs, columns=["embeddings"])
+                # logger.debug(f"all_embs_df {all_embs_df.info()}")
+                # all_embs_df.to_parquet(emb_parquet_path)
+                logger.debug(f"Saved Embedding AnnoyIndex to {emb_annoy_path}")
+
+                # free model from mem
+                del embedding_model
+
+            # logger.debug(f"all_embs_df {all_embs_df.info()}")
+            # self.query_embeddings = query_embeddings
+            collate_fn: Optional[Callable[[List[Any]], List[Tensor]]]
+            # if self.query_embeddings is not None:
+
+            # ensuring we have the same order in embeddings as the datasets above
+            # all_embs: List[np.ndarray] = []
+            # for _, (lang, (_, _)) in enumerate(lang_features_sorted):
+            #     nb, embs = self.query_embeddings[lang]
+            #     all_embs.extend([[emb] for emb in embs])
+
+            # all_embs_df = pd.DataFrame(all_embs)
+
+            def collate_fn_emb(batch):
+                all_tensors = [torch.stack([row[i] for row in batch]) for i in range(len(batch[0]))]
+                indices = all_tensors[0]
+                # logger.debug(f"indices {indices}")
+                similarities = torch.zeros(len(indices), len(indices))
+                for idx, i in enumerate(indices):
+                    dists = [1.0 - annoy_index.get_distance(i, j) for j in indices]
+                    similarities[idx, :] = torch.tensor(dists)
+                    similarities[:, idx] = torch.tensor(dists)
+                # similarities = torch.tensor([[1.0 - annoy_index.get_distance(i, j) for j in indices] for i in indices])
+                # batch_embs = np.stack(np.squeeze(all_embs_df.iloc[indices].values))
+                margin = 0.25
+                # similarities = (torch.tensor(cosine_similarity(batch_embs, batch_embs)) - margin).clamp(min=0.0)
+                similarities = (similarities - margin).clamp(min=0.0)
+                similarities.fill_diagonal_(1.0)
+                # logger.debug(f"similarities {similarities}")
+                all_tensors[2] = similarities
+
+                return all_tensors
+
+            collate_fn = collate_fn_emb
+        else:
+            collate_fn = None
+
+        self.collate_fn = collate_fn
+
+    def get_collate_fn(self) -> Optional[Callable[[List[Any]], List[Tensor]]]:
+        return self.collate_fn
 
     def get_datasets_nb(self) -> int:
         return len(self.datasets)
@@ -446,6 +600,86 @@ class LangDataset(ConcatNamedDataset):
         return len(self.concat_dataset)
 
 
+class LangDatasetDF(ConcatNamedDataset):
+    """
+    Dataset wrapping language features.
+
+    Each sample will be retrieved by indexing tensors along the first dimension.
+
+    Arguments:
+        *tensors (Tensor): tensors that have the same size of the first dimension.
+    """
+
+    def __init__(
+        self,
+        lang_features_df: Dict[str, pd.DataFrame],
+        lang_ids: Dict[str, int],
+        transform: Callable[[pd.Series, int], List[np.ndarray]],
+        use_lang_weights: bool = False,
+        # query_embeddings: Optional[Dict[str, Tuple[int, Iterable[np.ndarray]]]] = None,
+        embedding_model=None,
+        tokenizer=None,
+        emb_annoy_path: Path = None,
+    ):
+        super(LangDatasetDF, self).__init__()
+
+        self.langs: List[str] = list(lang_features_df.keys())
+        self.lang_ids = lang_ids
+        # self.datasets: List[TensorDataset] = []
+        self.datasets: List[DFDataset] = []
+
+        self.datasets_len: List[Tuple[int, str, int]] = []
+        self.lang_indexes: Dict[int, int] = {}
+        self.use_lang_weights = use_lang_weights
+
+        logger.info("Concatenating Datasets")
+        lang_features_sorted = sorted(lang_features_df.items(), key=lambda lf: lf[1].shape[0], reverse=True)
+        for idx, (lang, df) in enumerate(lang_features_sorted):
+            lang_id = self.lang_ids[lang]
+            self.lang_indexes[lang_id] = idx
+            logger.info(f"Adding Language {lang} id:{idx} lang_id:{lang_id} [{df.shape[0]} samples]")
+            self.datasets_len.append((lang_id, lang, df.shape[0]))
+            # fs = list(features)
+            # ds = FeatsDataset(filter_features(fs), transform)
+            ds = DFDataset(df, transform)
+            self.datasets.append(ds)
+
+        self.concat_dataset: ConcatDataset = ConcatDataset(self.datasets)
+        logger.info(f"Concat_dataset [{len(self.concat_dataset)} samples]")
+
+    def get_datasets_nb(self) -> int:
+        return len(self.datasets)
+
+    def get_lang_id(self, name: str) -> int:
+        return self.lang_ids[name]
+
+    def get_dataset_by_lang_id(self, lang_id: int) -> Dataset:
+        return self.datasets[self.lang_indexes[lang_id]]
+
+    def get_dataset_names(self) -> List[str]:
+        return self.langs
+
+    def get_datasets_info_by_desc_count(self) -> List[Tuple[int, str, int]]:
+        return self.datasets_len
+
+    def get_lang_id_for_sample_index(self, idx: int) -> int:
+        return self.concat_dataset[idx][0].item()
+
+    def get_cumulative_sizes(self) -> List[int]:
+        return self.concat_dataset.cumulative_sizes
+
+    def get_collate_fn(self) -> Optional[Callable[[List[Any]], List[Tensor]]]:
+        return None
+
+    def __getitem__(self, idx: int):
+        """Get item"""
+        return self.concat_dataset[idx]
+
+    def __len__(self):
+        """Get length"""
+        return len(self.concat_dataset)
+
+
 def compute_language_weightings(
     data: Dict[str, Tuple[int, Iterable[InputFeatures]]], lang_ids: Dict[str, int]
 ) -> Dict[int, float]:
@@ -457,6 +691,22 @@ def compute_language_weightings(
     num_languages = len(data)
     language_to_reweighting_factor = {
         lang_ids[language]: float(total_num_samples) / (num_languages * nb) for (language, (nb, _)) in data.items()
+    }
+
+    return language_to_reweighting_factor
+
+
+def compute_language_weightings_df(data: Dict[str, pd.DataFrame], lang_ids: Dict[str, int]) -> Dict[int, float]:
+    total_num_samples = 0
+    language_to_reweighting_factor: Dict[int, float] = {}
+    num_languages = len(data)
+    for (language, df) in data.items():
+        ln = df.shape[0]
+        language_to_reweighting_factor[lang_ids[language]] = 1 / (num_languages * ln)
+        total_num_samples += ln
+
+    language_to_reweighting_factor = {
+        lid: total_num_samples * factor for lid, factor in language_to_reweighting_factor.items()
     }
 
     return language_to_reweighting_factor

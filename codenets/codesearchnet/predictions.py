@@ -156,12 +156,13 @@ def run(args, tag_in_vcs=False) -> None:
         language_token = "<lg>"
         for lang_idx, language in enumerate(
             ("python", "go", "javascript", "java", "php", "ruby")
+            # ("php", "ruby")
         ):  # in enumerate(("python", "go", "javascript", "java", "php", "ruby")):
             predictions = []
             # (codes_encoded_df, codes_masks_df, definitions) = get_language_defs(language, training_ctx, language_token)
 
             code_embeddings, definitions = compute_code_encodings_from_defs(
-                language, training_ctx, language_token, batch_length=1024
+                language, training_ctx, language_token, batch_length=512
             )
             logger.info(f"Building Annoy Index of length {len(code_embeddings.values[0])}")
             indices: AnnoyIndex = AnnoyIndex(len(code_embeddings.values[0]), "angular")
@@ -189,7 +190,8 @@ def run(args, tag_in_vcs=False) -> None:
                 training_ctx.output_dir / f"model_predictions_{training_ctx.training_tokenizer_type}.csv",
                 index=False,
                 header=True if lang_idx == 0 else False,
-                mode="w" if lang_idx == 0 else "a",
+                # mode="w" if lang_idx == 0 else "a",
+                mode="a",
             )
             # Free memory
             del code_embeddings

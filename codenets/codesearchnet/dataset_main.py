@@ -17,6 +17,7 @@ from docopt import docopt
 from loguru import logger
 import sys
 import torch
+import itertools
 from dpu_utils.utils import run_and_debug
 from pyhocon import ConfigFactory, ConfigTree
 from torch.utils.data import DataLoader
@@ -48,13 +49,19 @@ def run(args, tag_in_vcs=False) -> None:
     )
     logger.info(f"train_dataloader [{len(train_dataloader)} samples]")
 
-    val_dataset = training_ctx.build_lang_dataset(DatasetType.VAL)
-    val_dataloader = DataLoader(
-        dataset=val_dataset,
-        batch_size=conf["training.batch_size.val"],
-        sampler=BalancedBatchSchedulerSampler(dataset=val_dataset, batch_size=conf["training.batch_size.val"]),
-    )
-    logger.info(f"val_dataloader [{len(val_dataloader)} samples]")
+    for batch in itertools.islice(train_dataloader, 5):
+        logger.info(f"batch {batch}")
+
+    # val_dataset = training_ctx.build_lang_dataset(DatasetType.VAL)
+    # val_dataloader = DataLoader(
+    #     dataset=val_dataset,
+    #     batch_size=conf["training.batch_size.val"],
+    #     sampler=BalancedBatchSchedulerSampler(dataset=val_dataset, batch_size=conf["training.batch_size.val"]),
+    # )
+    # logger.info(f"val_dataloader [{len(val_dataloader)} samples]")
+
+    # for batch in itertools.islice(val_dataloader, 5):
+    #     logger.info(f"batch {batch}")
 
 
 if __name__ == "__main__":

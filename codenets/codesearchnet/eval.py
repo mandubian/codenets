@@ -82,10 +82,10 @@ def run(args, tag_in_vcs=False) -> None:
                 t.to(training_ctx.device) for t in batch
             ]
 
-            per_sample_loss, per_sample_losses, similarity_scores = training_ctx.forward(batch, batch_idx)
+            batch_total_loss, similarity_scores = training_ctx.forward(batch, batch_idx)
 
             batch_size = BatchSize(batch[0].size()[0])
-            batch_loss = BatchLoss(per_sample_loss.item())
+            batch_loss = BatchLoss(batch_total_loss.item())
             total_loss, avg_loss, total_mrr, avg_mrr, total_size = compute_loss_mrr(
                 similarity_scores, batch_loss, batch_size, total_loss, total_mrr, total_size
             )
@@ -95,10 +95,10 @@ def run(args, tag_in_vcs=False) -> None:
             #     code_tokens=code_tokens,
             #     code_tokens_mask=code_tokens_mask,
             # )
-            # per_sample_losses, similarity_scores = training_ctx.losses_scores_fn(
+            # batch_total_losses, similarity_scores = training_ctx.losses_scores_fn(
             #     query_embedding, code_embedding, similarity
             # )
-            # per_sample_loss = torch.mean(per_sample_losses)
+            # batch_total_loss = torch.mean(batch_total_losses)
 
             # nb_samples = batch[0].size()[0]
 
@@ -113,13 +113,13 @@ def run(args, tag_in_vcs=False) -> None:
             # per_batch_mrr = torch.sum(per_sample_mrr) / nb_samples
 
             # epoch_samples += nb_samples
-            # epoch_loss += per_sample_loss.item() * nb_samples
+            # epoch_loss += batch_total_loss.item() * nb_samples
             # loss = epoch_loss / max(1, epoch_samples)
 
             # mrr_sum += per_batch_mrr.item() * nb_samples
             # mrr = mrr_sum / max(1, epoch_samples)
 
-            t_batch.set_postfix({f"loss": f"{per_sample_loss.item():10}"})
+            t_batch.set_postfix({f"loss": f"{batch_total_loss.item():10}"})
             t_batch.update(1)
 
     logger.info(

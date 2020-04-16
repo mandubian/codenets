@@ -1,13 +1,33 @@
 import os
 import torch
-from typing import Mapping, cast, Optional, List, TypeVar, Type, Tuple, Union, Generic, NewType, Iterable, Callable
+from typing import (
+    Mapping,
+    cast,
+    Optional,
+    List,
+    TypeVar,
+    Type,
+    Tuple,
+    Union,
+    Generic,
+    NewType,
+    Iterable,
+    Callable,
+    Dict,
+)
 from pathlib import Path
 from loguru import logger
 import wandb
 from pyhocon import ConfigTree
 from torch import Tensor
+from torch.utils.data import DataLoader
 from transformers import AdamW
 import numpy as np
+from codenets.codesearchnet.copied_code.utils import read_file_samples
+from codenets.codesearchnet.query_code_siamese.dataset import load_data_from_dirs
+import pickle
+
+
 from codenets.tensorboard_utils import Tensorboard
 from codenets.recordable import (
     RecordableMapping,
@@ -17,7 +37,7 @@ from codenets.recordable import (
     runtime_load_recordable,
 )
 from codenets.codesearchnet.data import DatasetParams
-from codenets.codesearchnet.dataset_utils import LangDataset, DatasetType
+from codenets.codesearchnet.dataset_utils import ConcatNamedDataset, DatasetType
 from codenets.utils import expand_data_path, instance_full_classname, full_classname, runtime_import
 from codenets.losses import load_loss_and_similarity_function
 
@@ -80,12 +100,21 @@ def compute_loss_mrr_ndcg(
     total_samples: TotalSize,
     device: torch.device,
 ) -> Tuple[TotalLoss, AvgLoss, TotalMrr, AvgMrr, TotalNdcg, AvgNdcg, TotalSize]:
-    _, similarity, _, _, _, _, _ = [t.to(device) for t in batch]
+    _, _, similarity, _, _, _, _, _ = batch
+    similarity = similarity.to(device)
     # compute total loss, avg loss, total MRR, avg MRR, total size
     # extract the logits from the diagonal of the matrix, which are the logits corresponding to the ground-truth
     correct_scores = similarity_scores.diagonal()
 
-    similarity_true = torch.diag(similarity).float()
+    # logger.debug(f"similarity_scores {similarity_scores}")
+
+    if len(similarity.shape) == 1:
+        # binary case => vector of 1s... remove that case?
+        similarity_true = torch.diag(similarity).float()
+    else:
+        similarity_true = similarity
+        # similarity_true = torch.diag(torch.diagonal(similarity)).float()
+
     per_sample_ndcg = compute_ndcg(similarity_scores, similarity_true, device)
     per_batch_ndcg = torch.sum(per_sample_ndcg) / batch_size
 
@@ -102,9 +131,10 @@ def compute_loss_mrr_ndcg(
 
     new_total_mrr = TotalMrr(total_mrr + per_batch_mrr.item() * batch_size)
     avg_mrr = AvgMrr(new_total_mrr / max(1, new_total_samples))
-
+    # logger.debug(f"avg_mrr {avg_mrr}")
     new_total_ndcg = TotalNdcg(total_ndcg + per_batch_ndcg.item() * batch_size)
     avg_ndcg = AvgNdcg(new_total_ndcg / max(1, new_total_samples))
+    # logger.debug(f"avg_ndcg {avg_ndcg}")
 
     return new_total_loss, avg_loss, new_total_mrr, avg_mrr, new_total_ndcg, avg_ndcg, new_total_samples
 
@@ -123,7 +153,8 @@ def compute_ndcg(
     :return: NDCG values for each slate and rank passed, shape [batch_size, len(ats)]
     """
     idcg = dcg(y_true, y_true, device, ats, gain_function)
-    ndcg_ = dcg(y_pred, y_true, device, ats, gain_function) / idcg
+    ndcg_ = dcg(y_pred, y_true, device, ats, gain_function)
+    ndcg_ = ndcg_ / idcg
     idcg_mask = idcg == 0
     ndcg_[idcg_mask] = 0.0  # if idcg == 0 , set ndcg to 0
 
@@ -162,7 +193,6 @@ def dcg(y_pred: Tensor, y_true: Tensor, device: torch.device, ats=None, gain_fun
     ats = [min(at, actual_length) for at in ats]
 
     true_sorted_by_preds = __apply_mask_and_get_true_sorted_by_preds(y_pred, y_true)
-
     discounts = (torch.tensor(1) / torch.log2(torch.arange(true_sorted_by_preds.shape[1], dtype=torch.float) + 2.0)).to(
         device=device
     )
@@ -329,7 +359,7 @@ class CodeSearchTrainingContext(RecordableMapping):
         """Set all necessary elements in train mode"""
         pass
 
-    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor]:
         """
         Perform forward path on batch
         
@@ -338,7 +368,7 @@ class CodeSearchTrainingContext(RecordableMapping):
             batch_idx (int): the batch index in dataloader
         
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, losses per sample in batch, tensor matrix of similarity scores between all samples)
+            Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, tensor matrix of similarity scores between all samples)
         """
         pass
 
@@ -350,7 +380,11 @@ class CodeSearchTrainingContext(RecordableMapping):
         """Set all necessary elements to zero_grad"""
         pass
 
-    def build_lang_dataset(self, dataset_type: DatasetType) -> LangDataset:
+    def build_lang_dataset(self, dataset_type: DatasetType) -> ConcatNamedDataset:
+        """Build language dataset using custom training context tokenizers"""
+        pass
+
+    def build_lang_dataloader(self, dataset_type: DatasetType) -> DataLoader:
         """Build language dataset using custom training context tokenizers"""
         pass
 
@@ -373,6 +407,9 @@ class CodeSearchTrainingContext(RecordableMapping):
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
     ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        pass
+
+    def decode_query_tokens(self, tokens: Iterable[List[int]]) -> List[str]:
         pass
 
     def build_tokenizers(self, from_dataset_type: DatasetType) -> bool:
@@ -422,3 +459,50 @@ class CodeSearchTrainingContext(RecordableMapping):
         ctx1 = klass.build_context_from_hocon(conf)
         ctx2 = klass.build_context_from_dir(dir)
         return klass.merge_contexts(ctx1, ctx2)
+
+    # def get_embeddings(self, dataset_type: DatasetType) -> Optional[Dict[str, Tuple[int, Iterable[np.ndarray]]]]:
+    #     data_params: DatasetParams
+    #     dirs: List[Path]
+    #     if dataset_type == DatasetType.TRAIN:
+    #         data_params = self.train_data_params
+    #         dirs = self.train_dirs
+    #     elif dataset_type == DatasetType.VAL:
+    #         data_params = self.val_data_params
+    #         dirs = self.val_dirs
+    #     elif dataset_type == DatasetType.TEST:
+    #         data_params = self.test_data_params
+    #         dirs = self.test_dirs
+
+    #     if data_params.query_embeddings == "sbert":
+    #         logger.info(f"Activating SBERT {dataset_type.value} Embeddings")
+    #         emb_pickle_path = Path(self.conf["embeddings.sbert.pickle_path"])
+    #         emb_pickle_file = emb_pickle_path / f"query_embeddings_{dataset_type.value}.p"
+    #         model = self.conf["embeddings.sbert.model"]
+    #         self.embedding_model = SentenceTransformer(model)
+    #         if not emb_pickle_file.exists():
+    #             logger.info(f"Re-Building SBERT {dataset_type.value} Embeddings")
+
+    #             def parse(data_file: Path, data_params: DatasetParams, model: SentenceTransformer):
+    #                 logger.info(f"Sbert encoding samples in {data_file}")
+    #                 filename = os.path.basename(data_file)
+    #                 file_language = filename.split("_")[0]
+    #                 samples = list(read_file_samples(data_file))
+    #                 queries = [" ".join(s["docstring_tokens"]) for s in samples]
+    #                 query_embeddings = model.encode(queries)
+
+    #                 return (file_language, len(samples), query_embeddings)
+
+    #             # model = SentenceTransformer(model)
+
+    #             embeddings = load_data_from_dirs(dirs, parse, None, False, data_params, self.embedding_model)
+
+    #             logger.info(f"Pickling Sbert embedding to {emb_pickle_file}")
+    #             pickle.dump(embeddings, open(emb_pickle_file, "wb"))
+    #         else:
+    #             logger.info(f"Loading pickled embedding from {emb_pickle_file}")
+    #             embeddings = pickle.load(open(emb_pickle_file, "rb"))
+
+    #         return embeddings
+
+    #     else:
+    #         return None

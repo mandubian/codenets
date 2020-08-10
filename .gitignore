@@ -31,3 +31,10 @@ resources/
 *.lock
 
 wandb
+checkpoints
+pickles
+runs
+vendor
+build
+build_tokenizers
+codenets.egg-info/

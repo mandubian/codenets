@@ -69,7 +69,8 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         if res is not None:
             query_tokenizer, code_tokenizer = res
         else:
-            raise ValueError("Couldn't load Tokenizers from conf")
+            #raise ValueError("Couldn't load Tokenizers from conf")
+            query_tokenizer, code_tokenizer = None, None
 
         device = torch.device(conf["training.device"])
         model = Query1Code1.from_hocon(conf)
@@ -267,23 +268,23 @@ def build_huggingface_bpetokenizers(
 
     query_files, lang_files = build_huggingface_token_files(dirs, data_params, output_path, sample_update)
     query_tokenizer, code_tokenizer = train_huggingface_bpetokenizers(data_params, query_files, lang_files)
-    query_tokenizer_rec = HuggingfaceBPETokenizerRecordable(query_tokenizer)
-    code_tokenizer_rec = HuggingfaceBPETokenizerRecordable(code_tokenizer)
+    #query_tokenizer_rec = HuggingfaceBPETokenizerRecordable(query_tokenizer)
+    #code_tokenizer_rec = HuggingfaceBPETokenizerRecordable(code_tokenizer)
     end = time.time()
 
     time_p = end - start
     logger.info(f"query_tokenizer/code_tokenizer trainings took: {time_p} sec")
 
-    records = RecordableMapping({"query_tokenizer": query_tokenizer_rec, "code_tokenizer": code_tokenizer_rec})
+    records = RecordableMapping({"query_tokenizer": query_tokenizer, "code_tokenizer": code_tokenizer})
     records.save(output_path)
 
     # testing query_tokenizer
     txt = "This is a docstring".lower()
     encoded_ids, mask = query_tokenizer.encode_sentence(txt)
-    logger.debug(f"encoded_ids {encoded_ids.tokens}")
-    decoded = query_tokenizer.decode_sequence(encoded_ids.ids)
+    logger.debug(f"encoded_ids {encoded_ids}")
+    decoded = query_tokenizer.decode_sequence(encoded_ids)
     logger.debug(f"decoded {decoded}")
     logger.debug(f"txt {txt}")
     # assert decoded == txt
 
-    return query_tokenizer_rec, code_tokenizer_rec
+    return query_tokenizer, code_tokenizer

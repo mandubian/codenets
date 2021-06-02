@@ -57,7 +57,7 @@ tokenizers==0.2.1
 torch==1.4.0
 tqdm==4.43.0
 transformers==2.3.0
-urllib3==1.25.8
+urllib3==1.26.5
 wandb==0.8.27
 watchdog==0.10.2
 win32-setctime==1.0.1; sys_platform == "win32"

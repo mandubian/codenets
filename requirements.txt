@@ -22,7 +22,7 @@ gql==0.2.0
 graphql-core==1.1
 idna==2.8
 jmespath==0.9.4
-joblib==0.14.1
+joblib==1.2.0
 loguru==0.3.2
 multiprocess==0.70.9
 numexpr==2.7.1

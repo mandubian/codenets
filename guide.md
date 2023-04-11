@@ -15,16 +15,18 @@ Mon but ici n'est pas de parler du fond (mes résultats n'étaient pas très int
   - [Configuration spécifique](./conf/query_code_siamese_2020_02_15_14_00.conf)
 - Exploration du typage fort en Python avec des types abstraits et les "newtypes" pour spécialiser des types simples
 
-  - [Type abstraits](./codenets/recordable.py)
-  - [Type génériques](./codenets/training_ctx.py#L205-L220)
+  - [Type abstraits](./codenets/recordable.py#L22)
+  - [Type génériques](./codenets/codesearchnet/training_ctx.py#L205-L220)
   - [Newtypes](./codenets/codesearchnet/training_ctx.py#L49-L68)
 
 - Evaluation de la compilation des types avc le moteur de compilation Mypy de Microsoft.
   - [mypy.ini](./mypy.ini)
-- Etude de sauvegarde/restoration générique d'un contexte complet de projet IA pour une sauvegarde
-  dans un point unique sur un cloud de type AWS ou un serveur orienté ML de type MLFlow avec lien vers des commits de code github par exemple.
+- Etude de sauvegarde/restoration générique d'un contexte complet de projet IA (configuration + modèle + tokenizer + ...) pour une sauvegarde dans un point unique sur un cloud de type AWS ou un serveur orienté ML de type MLFlow avec lien vers des commits de code github par exemple.
+  - [Recordable générique](./codenets/recordable.py#L22)
+  - [Recordable spécialisé configuration HOCON](./codenets/recordable.py#L113)
+  - [Recordable spécialisé modèle/tokenizer TorchModule](./codenets/recordable.py#L248)
   - [training context générique](./codenets/codesearchnet/training_ctx.py#L245)
-  - [training context spécialisé](./codenets/codesearchnet/query_code_siamese/training_ctx.py)
+  - [training context spécialisé sur un modèle spécifique](./codenets/codesearchnet/query_code_siamese/training_ctx.py)
 - Evaluation de la complexité de réécriture d'un code Tensorflow vers du PyTorch et les librairies huggingface.
 - Intégration avec WanDB/Tensorflow pour le suivi des entraînements.
 

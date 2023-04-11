@@ -11,7 +11,7 @@ import time
 import numpy as np
 from transformers import AdamW
 from pyhocon import ConfigTree
-from tokenizers import BPETokenizer
+from tokenizers import CharBPETokenizer
 from tokenizers.normalizers import BertNormalizer
 from codenets.recordable import Recordable, RecordableMapping
 from codenets.codesearchnet.dataset_utils import LangDataset
@@ -36,8 +36,6 @@ class Query1Code1ModelAndAdamW(ModelAndAdamWRecordable):
     we need to load both together or it's no generic.
     It is linked to optimizer AdamW because it's impossible to load
     something you don't know the class... Not very elegant too...
-    For now, it doesn't manage the device of the model which is an issue
-    but I haven't found an elegant solution to do that...
     To be continued
     """
 
@@ -112,7 +110,7 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         torch.set_grad_enabled(False)
         return True
 
-    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor]:
         """
         Perform forward path on batch
         
@@ -121,7 +119,7 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
             batch_idx (int): the batch index in dataloader
         
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, losses per sample in batch, tensor matrix of similarity scores between all samples)
+            Tuple[Tensor, Tensor]: (global loss tensor for all samples in batch, losses per sample in batch, tensor matrix of similarity scores between all samples)
         """
         languages, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, code_lang_weights = [
             t.to(self.device) for t in batch
@@ -133,12 +131,12 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
             code_tokens=code_tokens,
             code_tokens_mask=code_tokens_mask,
         )
-        per_sample_losses, similarity_scores = self.losses_scores_fn(
+        total_loss, similarity_scores = self.losses_scores_fn(
             query_embedding, code_embedding, similarity, code_lang_weights
         )
-        avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
+        # avg_loss = torch.sum(per_sample_losses) / torch.sum(code_lang_weights)
 
-        return (avg_loss, per_sample_losses, similarity_scores)
+        return (total_loss, similarity_scores)
 
     def backward_optimize(self, loss: Tensor) -> Tensor:
         """Perform backward pass from loss"""
@@ -159,17 +157,17 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
 
     def tokenize_query_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.query_tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.code_tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.code_tokenizer.encode_tokens(tokens, max_length)
 
     def build_lang_dataset(self, dataset_type: DatasetType) -> LangDataset:
@@ -198,6 +196,7 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
             lang_token="<lg>",
             pickle_path=self.pickle_path,
             parallelize=self.train_data_params.parallelize,
+            use_lang_weights=False,
         )
 
     def build_tokenizers(
@@ -243,18 +242,18 @@ def train_huggingface_bpetokenizers(
     data_params: DatasetParams, query_files: List[Path], lang_files: Dict[str, Path]
 ) -> Tuple[TokenizerRecordable, TokenizerRecordable]:
     logger.info(
-        f"Building Query BPETokenizer from query_files {query_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
+        f"Building Query CharBPETokenizer from query_files {query_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
     )
-    query_tokenizer = BPETokenizer()
-    query_tokenizer.normalizer = BertNormalizer.new(
+    query_tokenizer = CharBPETokenizer()
+    query_tokenizer.normalizer = BertNormalizer(
         clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
     )
     query_tokenizer.train(
         files=list(map(str, query_files)), vocab_size=data_params.vocab_size, special_tokens=data_params.special_tokens
     )
 
-    code_tokenizer = BPETokenizer()
-    code_tokenizer.normalizer = BertNormalizer.new(
+    code_tokenizer = CharBPETokenizer()
+    code_tokenizer.normalizer = BertNormalizer(
         clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
     )
     code_tokenizer.train(
@@ -292,8 +291,8 @@ def build_huggingface_bpetokenizers(
     # testing query_tokenizer
     txt = "This is a docstring".lower()
     encoded_ids, mask = query_tokenizer.encode_sentence(txt)
-    logger.debug(f"encoded_ids {encoded_ids.tokens}")
-    decoded = query_tokenizer.decode_sequence(encoded_ids.ids)
+    logger.debug(f"encoded_ids {encoded_ids}")
+    decoded = query_tokenizer.decode_sequence(encoded_ids.tolist())
     logger.debug(f"decoded {decoded}")
     logger.debug(f"txt {txt}")
     # assert decoded == txt

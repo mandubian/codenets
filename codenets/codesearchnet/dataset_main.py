@@ -23,10 +23,9 @@ from pyhocon import ConfigFactory, ConfigTree
 from torch.utils.data import DataLoader
 from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext
-from codenets.utils import expand_data_path
 
 
-print("Torch version", torch.__version__)  # type: ignore
+print("Torch version", torch.__version__)
 
 logger.remove()
 logger.add(sys.stderr, level="DEBUG", colorize=True, backtrace=False)

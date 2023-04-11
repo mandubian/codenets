@@ -15,15 +15,13 @@ from docopt import docopt
 from loguru import logger
 import sys
 import torch
-from typing import List
 from dpu_utils.utils import run_and_debug
 from pyhocon import ConfigFactory, ConfigTree
 
-from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, default_sample_update
-from codenets.codesearchnet.dataset_utils import DatasetType
+from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext
 from codenets.codesearchnet.tokenizer_recs import build_most_common_tokens
 
-print("Torch version", torch.__version__)  # type: ignore
+print("Torch version", torch.__version__)
 
 logger.remove()
 logger.add(sys.stderr, level="DEBUG", colorize=True, backtrace=False)
@@ -36,10 +34,10 @@ def run(args, tag_in_vcs=False) -> None:
     conf: ConfigTree = ConfigFactory.parse_file(conf_file)
     logger.info(f"config {conf}")
 
-    logger.info(f"Build Training Context from config {conf_file}")
-    training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
+    # logger.info(f"Build Training Context from config {conf_file}")
+    # training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
 
-    training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
+    # training_ctx.build_tokenizers(from_dataset_type=DatasetType.TRAIN)
 
     logger.info(f"Reload Training Context from config {conf_file} with built tokenizers")
     training_ctx = CodeSearchTrainingContext.build_context_from_hocon(conf)
@@ -50,7 +48,8 @@ def run(args, tag_in_vcs=False) -> None:
     logger.info(f"encoded {training_ctx.tokenize_code_sentences([txt])}")
 
     most_commons = build_most_common_tokens(
-        training_ctx.train_dirs, training_ctx.train_data_params, training_ctx.tokenizers_build_path
+        training_ctx.train_dirs, training_ctx.train_data_params, training_ctx.tokenizers_build_path,
+        parallelize=False
     )
     logger.info(f"most_commons {most_commons}")
 

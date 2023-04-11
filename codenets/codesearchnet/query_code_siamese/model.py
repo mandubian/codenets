@@ -1,28 +1,17 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import MutableMapping, Optional, Union, Mapping, cast, Dict, List, Type
+from typing import MutableMapping, Optional, Union, Type
 
 import numpy as np
-import torch
 from loguru import logger
-from transformers import AdamW, BertConfig, BertModel, AlbertConfig, AlbertModel
+from transformers import BertConfig, BertModel, AlbertConfig, AlbertModel
 
-from codenets.codesearchnet.data import DatasetParams
-from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
-from codenets.tensorboard_utils import Tensorboard
-import wandb
-from codenets.losses import load_loss_and_similarity_function
 from codenets.codesearchnet.poolers import MeanWeightedPooler
 from codenets.codesearchnet.huggingface.models import PreTrainedModelRecordable
 from codenets.recordable import (
-    HoconConfigRecordable,
     Recordable,
-    RecordableMapping,
     RecordableTorchModule,
-    RecordableTorchModuleMapping,
-    DictRecordable,
     runtime_load_recordable_mapping,
     save_recordable_mapping,
 )
@@ -37,7 +26,6 @@ class QueryCodeSiamese(RecordableTorchModule):
     - one single-branch code encoder
     - one optional pooler to pool output embeddings from any branch
     """
-
     def __init__(self, encoder: RecordableTorchModule, pooler: Optional[RecordableTorchModule] = None):
         super(QueryCodeSiamese, self).__init__()
         self.encoder = encoder
@@ -54,9 +42,9 @@ class QueryCodeSiamese(RecordableTorchModule):
     def load(cls, restore_dir: Union[Path, str]) -> QueryCodeSiamese:
         d = Path(restore_dir) / full_classname(cls)
         records = runtime_load_recordable_mapping(d)
-        return cls(**records)
+        return cls(**records) # type: ignore[arg-type]
 
-    def forward(  # type: ignore
+    def forward(
         self,
         languages: np.ndarray,
         query_tokens: np.ndarray,

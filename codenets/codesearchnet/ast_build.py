@@ -21,29 +21,14 @@ Options:
     --debug                          Enable debug routines. [default: False]
 """
 
-from typing import Dict, List, Optional, Tuple, Set
 from dpu_utils.utils import run_and_debug
 from docopt import docopt
 from loguru import logger
-import itertools
 import os
-import pickle
-from torch.utils.data import DataLoader
-from pathlib import Path
 from pyhocon import ConfigFactory
-from torch import nn
-from torch import Tensor
-import torch
-import numpy as np
-import pandas as pd
 
-from tree_sitter import Language, Parser, Node
-from codenets.codesearchnet.copied_code.utils import read_file_samples
-from sklearn.metrics.pairwise import pairwise_distances
-from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
-from codenets.codesearchnet.data import DatasetParams
+
 from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext
-from codenets.codesearchnet.query_code_siamese.dataset import load_data_from_dirs
 from codenets.codesearchnet.code_ast.ast_utils import build_language_ast
 
 """Evaluating SBert."""

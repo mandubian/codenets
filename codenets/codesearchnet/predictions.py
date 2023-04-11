@@ -78,16 +78,20 @@ def compute_code_encodings_from_defs(
                 df_batch.values, max_length=training_ctx.conf["dataset.common_params.code_max_num_tokens"]
             )
 
-            codes_encoded_t = torch.tensor(codes_encoded, dtype=torch.long).to(training_ctx.device)
-            codes_masks_t = torch.tensor(codes_masks, dtype=torch.long).to(training_ctx.device)
+            # codes_encoded_t = torch.tensor(codes_encoded, dtype=torch.long).to(training_ctx.device)
+            # codes_masks_t = torch.tensor(codes_masks, dtype=torch.long).to(training_ctx.device)
 
             # logger.debug(f"codes_encoded_t {codes_encoded_t}")
             # logger.debug(f"codes_masks_t {codes_masks_t}")
 
             emb_df = pd.DataFrame(
-                training_ctx.encode_code(lang_id=lang_id, code_tokens=codes_encoded_t, code_tokens_mask=codes_masks_t)
-                .cpu()
-                .numpy()
+                training_ctx.encode_code(
+                    lang_id=lang_id,
+                    code_tokens=codes_encoded,
+                    code_tokens_mask=codes_masks
+                )
+                # .cpu()
+                # .numpy()
             )
             # logger.debug(f"codes_encoded_t:{codes_encoded_t.shape} codes_masks_t:{codes_masks_t.shape}")
             if g < 2:
@@ -144,11 +148,11 @@ def run(args, tag_in_vcs=False) -> None:
     with torch.no_grad():
         query_embeddings = (
             training_ctx.encode_query(
-                query_tokens=torch.tensor(queries_tokens, dtype=torch.long).to(training_ctx.device),
-                query_tokens_mask=torch.tensor(queries_masks, dtype=torch.long).to(training_ctx.device),
+                query_tokens=queries_tokens,
+                query_tokens_mask=queries_masks,
             )
-            .cpu()
-            .numpy()
+            # .cpu()
+            # .numpy()
         )
         logger.info(f"query_embeddings: {query_embeddings.shape}")
 

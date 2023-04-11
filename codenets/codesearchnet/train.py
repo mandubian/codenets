@@ -21,11 +21,10 @@ from docopt import docopt
 from dpu_utils.utils import run_and_debug
 from loguru import logger
 from pyhocon import ConfigFactory, ConfigTree
-from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
 import wandb
 
-from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
+from codenets.codesearchnet.dataset_utils import DatasetType
 from codenets.save import save_records_best, save_records_last
 from codenets.codesearchnet.training_ctx import (
     CodeSearchTrainingContext,

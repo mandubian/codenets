@@ -9,8 +9,9 @@ An encoder which learns byte pair encodings for white-space separated text.
 Can tokenize, encode, and decode.
 """
 import typing
-from typing import Optional
+from typing import Optional, Sized
 from collections import Counter
+# from dpu_utils.mlutils import Vocabulary
 
 try:
     from typing import Dict, Iterable, List, Iterator
@@ -26,7 +27,7 @@ DEFAULT_PAD = "__pad"
 # pylint: disable= inherit-non-class
 
 
-class BpeVocabulary(typing.Sized):
+class BpeVocabulary(Sized):
     """Encode white-space separated text using byte-pair encoding.  See https://arxiv.org/abs/1508.07909 for details."""
 
     def __init__(
@@ -126,6 +127,14 @@ class BpeVocabulary(typing.Sized):
 
         self.inverse_word_vocab = {idx: token for token, idx in self.word_vocab.items()}
         self.inverse_bpe_vocab = {idx: token for token, idx in self.bpe_vocab.items()}
+
+    @staticmethod
+    def get_unk() -> str:
+        return DEFAULT_UNK
+
+    @staticmethod
+    def get_pad() -> str:
+        return DEFAULT_PAD
 
     @staticmethod
     def trim_vocab(n: int, vocab: Dict[str, int]) -> None:

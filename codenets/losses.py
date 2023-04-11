@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import abstractmethod
 from torch import nn
 
 import torch
@@ -8,15 +9,20 @@ from typing import Tuple
 
 
 class LossAndSimilarityScore(nn.Module):
-    def forward(  # type: ignore
-        self, x1: torch.Tensor, x2: torch.Tensor, ground_similarity: torch.Tensor, code_lang_weights: torch.Tensor
+    @abstractmethod
+    def forward(
+        self,
+        query_embeddings: torch.Tensor,
+        code_embeddings: torch.Tensor,
+        ground_similarity: torch.Tensor,
+        code_lang_weights: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Compute Loss and similarity score between x1 and x2
         
         Args:
-            x1 (torch.Tensor): The first tensor [B x T x D].
-            x2 (torch.Tensor): The second tensor [B x T x D].
+            query_embeddings (torch.Tensor): The first tensor [B x T x D].
+            code_embeddings (torch.Tensor): The second tensor [B x T x D].
             ground_similarityx2 (torch.Tensor): The second tensor [B x T x 1].
 
         Returns:
@@ -38,14 +44,14 @@ class CosineSimilarityScoreAndMarginLoss(LossAndSimilarityScore):
         self.margin = margin
         self.eps = eps
 
-    def forward(  # type: ignore
+    def forward(
         self,
         query_embeddings: torch.Tensor,
         code_embeddings: torch.Tensor,
         ground_similarity: torch.Tensor,
         code_lang_weights: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        cos_sims = cosine_similarities(query_embeddings, code_embeddings)  # B x B
+        cos_sims = cosine_similarities(query_embeddings, code_embeddings, self.eps)  # B x B
         similarity_scores = cos_sims
         z = torch.zeros_like(cos_sims).fill_diagonal_(float("-Inf"))
         best_wrongs, _ = torch.max(torch.relu(cos_sims + z), dim=-1)  # B x 1
@@ -64,7 +70,7 @@ class SoftmaxCrossEntropyLossAndSimilarityScore(LossAndSimilarityScore):
         self.device = device
         self.margin = margin
 
-    def forward(  # type: ignore
+    def forward(
         self,
         query_embeddings: torch.Tensor,
         code_embeddings: torch.Tensor,
@@ -92,7 +98,7 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
         self.device = device
         self.margin = margin
 
-    def forward(  # type: ignore
+    def forward(
         self,
         query_embeddings: torch.Tensor,
         code_embeddings: torch.Tensor,
@@ -123,7 +129,7 @@ class LogSoftmaxLossAndSimilarityScore(LossAndSimilarityScore):
 
 def load_loss_and_similarity_function(loss_config: ConfigTree, device: torch.device) -> LossAndSimilarityScore:
     if loss_config["type"] == "softmax_cross_entropy":
-        logger.info("Initializing Sofmax Cross Entroopy Loss")
+        logger.info("Initializing Softmax Cross Entroopy Loss")
         return LogSoftmaxLossAndSimilarityScore(device, loss_config["margin"])
     elif loss_config["type"] == "cosine_similarity":
         logger.info("Initializing Cosine Similarity Loss")
@@ -199,7 +205,7 @@ class LambdaLossAndSimilarityScore(LossAndSimilarityScore):
         self.reduction = reduction
         self.reduction_log = reduction_log
 
-    def forward(  # type: ignore
+    def forward(
         self,
         query_embeddings: torch.Tensor,
         code_embeddings: torch.Tensor,
@@ -304,7 +310,7 @@ class ApproxNDCGLossAndSimilarityScore(LossAndSimilarityScore):
         self.eps = eps
         self.alpha = alpha
 
-    def forward(  # type: ignore
+    def forward(
         self,
         query_embeddings: torch.Tensor,
         code_embeddings: torch.Tensor,
@@ -429,7 +435,7 @@ class ApproxNDCGLossAndSimilarityScore(LossAndSimilarityScore):
 #     if weighing_scheme is None:
 #         weights = 1.0
 #     else:
-#         weights = globals()[weighing_scheme](G, D, mu, true_sorted_by_preds)  # type: ignore
+#         weights = globals()[weighing_scheme](G, D, mu, true_sorted_by_preds)
 
 #     # We are clamping the array entries to maintain correct backprop (log(0) and division by 0)
 #     scores_diffs = (y_pred_sorted[:, :, None] - y_pred_sorted[:, None, :]).clamp(min=-1e8, max=1e8)

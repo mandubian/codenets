@@ -121,7 +121,7 @@ def parse_data_file_single_code_tokenizer(
 
     samples = list(read_file_samples(data_file))
 
-    ds: List[Dict[str, Union[str, int]]] = []
+    ds: List[Dict[str, Union[str, int, np.ndarray]]] = []
     for raw_sample in samples:
         language = raw_sample["language"]
         if language.startswith("python"):  # In some datasets, we use 'python-2.7' and 'python-3'
@@ -197,7 +197,7 @@ def load_data_from_files(
 
         per_file_results = list(pool.map(cb, tasks_as_args))
     else:
-        per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore
+        per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore[arg-type]
 
     lang_samples_iter: Dict[str, Tuple[int, List[Iterable[T_Single]]]] = {}
     for (lang, lg, samples_iter) in per_file_results:
@@ -254,23 +254,23 @@ def build_lang_dataset_single_code_tokenizer(
             return InputFeatures(
                 language=data_params.lang_ids[cast(str, sample["language"])],
                 similarity=cast(int, sample["similarity"]),
-                query_tokens=sample["query_tokens_func_name_as_query"],
-                query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
-                query_docstring_tokens=sample["query_tokens_docstring_as_query"],
-                query_docstring_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
-                code_tokens=sample["code_tokens_func_name_as_query"],
-                code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
+                query_tokens=cast(np.ndarray, sample["query_tokens_func_name_as_query"]),
+                query_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_func_name_as_query"]),
+                query_docstring_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+                query_docstring_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+                code_tokens=cast(np.ndarray, sample["code_tokens_func_name_as_query"]),
+                code_tokens_mask=cast(np.ndarray, sample["code_tokens_mask_func_name_as_query"]),
             )
         else:
             return InputFeatures(
                 language=data_params.lang_ids[cast(str, sample["language"])],
                 similarity=cast(int, sample["similarity"]),
-                query_tokens=sample["query_tokens_docstring_as_query"],
-                query_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
-                query_docstring_tokens=sample["query_tokens_docstring_as_query"],
-                query_docstring_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
-                code_tokens=sample["code_tokens_docstring_as_query"],
-                code_tokens_mask=sample["code_tokens_mask_docstring_as_query"],
+                query_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+                query_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+                query_docstring_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+                query_docstring_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+                code_tokens=cast(np.ndarray, sample["code_tokens_docstring_as_query"]),
+                code_tokens_mask=cast(np.ndarray, sample["code_tokens_mask_docstring_as_query"]),
             )
 
     def parser(
@@ -314,7 +314,10 @@ def build_lang_dataset_single_code_tokenizer(
     # logger.debug(f"Samples {loaded_samples['python'][:2]}")
     transform = Compose([InputFeaturesToNpArray, Tensorize])
     dataset = LangDataset(
-        loaded_samples, lang_ids=data_params.lang_ids, transform=transform, use_lang_weights=use_lang_weights
+        loaded_samples, lang_ids=data_params.lang_ids,
+        transform=transform, use_lang_weights=use_lang_weights,
+        query_tokenizer=query_tokenizer,
+        embedding_model=None
     )
     logger.debug(f"Loaded {name} lang dataset [{len(dataset)} samples]")
     return dataset

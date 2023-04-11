@@ -12,8 +12,8 @@ import numpy as np
 from codenets.utils import get_data_files_from_directory
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
-from codenets.codesearchnet.original.utils import read_file_samples
-from codenets.codesearchnet.dataset_utils import load_data_from_sample, Samples, LangDataset
+from codenets.codesearchnet.copied_code.utils import read_file_samples
+from codenets.codesearchnet.dataset_utils import Compose, InputFeaturesToNpArray, Tensorize, load_data_from_sample, Samples, LangDataset
 from codenets.codesearchnet.data import InputFeatures
 
 
@@ -34,7 +34,7 @@ def parse_data_file(
 
     samples = list(read_file_samples(data_file))
 
-    ds: List[Dict[str, Union[str, int]]] = []
+    ds: List[Dict[str, Union[str, int, np.ndarray]]] = []
     for raw_sample in samples:
         language = raw_sample["language"]
         if language.startswith("python"):  # In some datasets, we use 'python-2.7' and 'python-3'
@@ -169,19 +169,23 @@ def build_lang_dataset(
             return InputFeatures(
                 language=data_params.lang_ids[cast(str, sample["language"])],
                 similarity=cast(int, sample["similarity"]),
-                query_tokens=sample["query_tokens_func_name_as_query"],
-                query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
-                code_tokens=sample["code_tokens_func_name_as_query"],
-                code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
+                query_tokens=cast(np.ndarray, sample["query_tokens_func_name_as_query"]),
+                query_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_func_name_as_query"]),
+                query_docstring_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+                query_docstring_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+                code_tokens=cast(np.ndarray, sample["code_tokens_func_name_as_query"]),
+                code_tokens_mask=cast(np.ndarray, sample["code_tokens_mask_func_name_as_query"]),
             )
         else:
             return InputFeatures(
                 language=data_params.lang_ids[cast(str, sample["language"])],
                 similarity=cast(int, sample["similarity"]),
-                query_tokens=sample["query_tokens_docstring_as_query"],
-                query_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
-                code_tokens=sample["code_tokens_docstring_as_query"],
-                code_tokens_mask=sample["code_tokens_mask_docstring_as_query"],
+                query_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+                query_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+                query_docstring_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+                query_docstring_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+                code_tokens=cast(np.ndarray, sample["code_tokens_docstring_as_query"]),
+                code_tokens_mask=cast(np.ndarray, sample["code_tokens_mask_docstring_as_query"]),
             )
 
     def parser(
@@ -221,6 +225,13 @@ def build_lang_dataset(
         logger.debug(f"Pickled dataset {name} [{nb} raw samples] to {pickle_file}")
 
     # logger.debug(f"Samples {loaded_samples['python'][:2]}")
-    dataset = LangDataset(loaded_samples, lang_ids=data_params.lang_ids)
+    transform = Compose([InputFeaturesToNpArray, Tensorize])
+    dataset = LangDataset(
+        loaded_samples,
+        lang_ids=data_params.lang_ids,
+        query_tokenizer=query_tokenizer,
+        embedding_model=None,
+        transform=transform
+    )
     logger.debug(f"Loaded {name} lang dataset [{len(dataset)} samples]")
     return dataset

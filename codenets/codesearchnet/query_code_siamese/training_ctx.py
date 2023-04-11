@@ -7,21 +7,20 @@ from loguru import logger
 from pathlib import Path
 import time
 
-# from torch import nn
+# from torch  nn
 import numpy as np
 from torch.utils.data import DataLoader
 from transformers import AdamW
 from pyhocon import ConfigTree
-from tokenizers import BPETokenizer
+from tokenizers import CharBPETokenizer
 from tokenizers.normalizers import BertNormalizer
-from tokenizers.trainers import BpeTrainer
 from sentence_transformers import SentenceTransformer
 
 from codenets.recordable import Recordable, RecordableMapping, NoneRecordable, DictRecordable
 from codenets.codesearchnet.dataset_utils import ConcatNamedDataset
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.dataset_utils import BalancedBatchSchedulerSampler, DatasetType
-from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, DatasetType
+from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.training_ctx import ModelAndAdamWRecordable
 from codenets.utils import _to_subtoken_stream
@@ -35,7 +34,7 @@ from codenets.codesearchnet.huggingface.tokenizer_recs import (
     HuggingfaceBPETokenizerRecordable,
     build_huggingface_token_files,
 )
-from codenets.codesearchnet.code_ast.ast_utils import load_special_tokens, TreeSitterParser
+from codenets.codesearchnet.code_ast.ast_utils import TreeSitterParser
 
 
 class QueryCodeSiameseModelAndAdamW(ModelAndAdamWRecordable):
@@ -45,8 +44,6 @@ class QueryCodeSiameseModelAndAdamW(ModelAndAdamWRecordable):
     we need to load both together or it's no generic.
     It is linked to optimizer AdamW because it's impossible to load
     something you don't know the class... Not very elegant too...
-    For now, it doesn't manage the device of the model which is an issue
-    but I haven't found an elegant solution to do that...
     To be continued
     """
 
@@ -92,8 +89,9 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
             # need to pair model and optimizer as optimizer need it to be reloaded
             "model_optimizer": QueryCodeSiameseModelAndAdamW(model, optimizer),
             "tokenizer": tokenizer,
-            "common_tokens": common_tokens,
         }
+        if not isinstance(common_tokens, NoneRecordable):
+            records["common_tokens"] = common_tokens
 
         return records
 
@@ -166,17 +164,17 @@ class QueryCodeSiameseCtx(CodeSearchTrainingContext):
 
     def tokenize_query_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.tokenizer.encode_tokens(tokens, max_length)
 
     def decode_query_tokens(self, tokens: Iterable[List[int]]) -> List[str]:
@@ -373,10 +371,10 @@ def train_huggingface_bpetokenizers(
     data_params: DatasetParams, query_files: List[Path], lang_files: Dict[str, Path]
 ) -> TokenizerRecordable:
     logger.info(
-        f"Building Siamese BPETokenizer from query_files {query_files} and lang_files {lang_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
+        f"Building Siamese CharBPETokenizer from query_files {query_files} and lang_files {lang_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
     )
-    tokenizer = BPETokenizer()
-    tokenizer.normalizer = BertNormalizer.new(
+    tokenizer = CharBPETokenizer()
+    tokenizer.normalizer = BertNormalizer(
         clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
     )
     tokenizer.train(
@@ -411,7 +409,7 @@ def build_huggingface_bpetokenizers(
     txt = "This is a docstring".lower()
     encoded_ids, mask = tokenizer.encode_sentence(txt)
     logger.debug(f"encoded_ids {encoded_ids}")
-    decoded = tokenizer.decode_sequence(encoded_ids)
+    decoded = tokenizer.decode_sequence(encoded_ids.tolist())
     logger.debug(f"decoded {decoded}")
     logger.debug(f"txt {txt}")
     # assert decoded == txt

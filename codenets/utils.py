@@ -13,6 +13,16 @@ from pickle import dumps, loads
 IDENTIFIER_TOKEN_REGEX = re.compile("[_a-zA-Z][_a-zA-Z0-9]*")
 
 
+def listdir_nohidden_gen(path):
+    for f in os.listdir(path):
+        if not f.startswith('.'):
+            yield f
+
+
+def listdir_nohidden(path):
+    return list(listdir_nohidden_gen(path))
+
+
 def runtime_import(class_name: str):
     import importlib
 
@@ -26,6 +36,7 @@ def runtime_import(class_name: str):
         Class: The imported class
     """
     components = class_name.split(".")
+    print(f">>> class_name {class_name}<<<<")
     mod = getattr(importlib.import_module(".".join(components[:-1])), components[-1])
     return mod
 
@@ -50,7 +61,7 @@ def instance_full_classname(o):
 
 
 def _to_subtoken_stream(input_stream: Iterable[str], mark_subtoken_end: bool) -> Iterable[str]:
-    """Generator of chopped strings into sub-tokens strings (like snake-case)"""
+    """Generate chopped strings into sub-tokens strings (like snake-case)"""
     for token in input_stream:
         if IDENTIFIER_TOKEN_REGEX.match(token):
             yield from split_identifier_into_parts(token)
@@ -98,7 +109,7 @@ def get_data_files_from_directory(data_dirs: List[Path], max_files_per_dir: Opti
             dir_files = sorted(dir_files)[: int(max_files_per_dir)]
         files += dir_files
 
-    np.random.shuffle(files)  # This avoids having large_file_0, large_file_1, ... subsequences
+    np.random.shuffle(np.array(files))  # This avoids having large_file_0, large_file_1, ... subsequences
     return files
 
 
@@ -130,7 +141,7 @@ def stream_load(file_obj):
     Load contents from file_obj, returning a generator that yields one
     element at a time
     """
-    cur_elt = []  # type: ignore
+    cur_elt = []
     for line in file_obj:
         if line == b"\n":
             encoded_elt = b"".join(cur_elt)

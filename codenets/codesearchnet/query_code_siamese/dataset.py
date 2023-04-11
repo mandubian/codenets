@@ -23,7 +23,6 @@ from codenets.codesearchnet.dataset_utils import (
     Compose,
     InputFeaturesToNpArray_RandomReplace,
     PDSeriesToNpArray,
-    FullNpArrayToFinalNpArray,
     Tensorize,
     compute_language_weightings,
     compute_language_weightings_df,
@@ -103,7 +102,6 @@ def load_data_from_sample_siamese(
         if use_subtokens:
             data = _to_subtoken_stream(data, mark_subtoken_end=mark_subtoken_end)
 
-        logger.debug("")
         if encoder_label == "code":
             tokens, tokens_mask = convert_and_pad_token_sequence(
                 tokenizer=tokenizer,
@@ -143,7 +141,7 @@ def parse_data_file_siamese_tokenizer(
 
     samples = list(read_file_samples(data_file))
 
-    ds: List[Dict[str, Union[str, int]]] = []
+    ds: List[Dict[str, Union[str, int, np.ndarray]]] = []
     for raw_sample in samples:
         language = raw_sample["language"]
         if language.startswith("python"):  # In some datasets, we use 'python-2.7' and 'python-3'
@@ -219,7 +217,7 @@ def load_data_from_files(
 
         per_file_results = list(pool.map(cb, tasks_as_args))
     else:
-        per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore
+        per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore[arg-type]
 
     lang_samples_iter: Dict[str, Tuple[int, List[Iterable[T_Single]]]] = {}
     for (lang, lg, samples_iter) in per_file_results:
@@ -239,7 +237,7 @@ def load_data_from_files(
 def load_data_from_files_raw(
     data_files: Iterable[Path],
     # humm that is not very nice type signature... need to create interface for that
-    parse_callback: Callable[..., Tuple[str, int, Iterable[T_Single]]],  # type: ignore
+    parse_callback: Callable[..., Tuple[str, int, Iterable[T_Single]]],
     parallelize: bool,
     *args,
 ) -> Dict[str, Tuple[int, Iterable[T_Single]]]:
@@ -255,7 +253,7 @@ def load_data_from_files_raw(
 
         per_file_results = list(pool.map(cb, tasks_as_args))
     else:
-        per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore
+        per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]
 
     lang_samples_iter: Dict[str, Tuple[int, List[Iterable[T_Single]]]] = {}
     for (lang, lg, samples_iter) in per_file_results:
@@ -291,7 +289,7 @@ def load_data_from_dirs_siamese_tokenizer(
 
 def load_data_from_dirs(
     data_dirs: List[Path],
-    parse_callback: Callable[..., Tuple[str, int, Iterable[T_Single]]],  # type: ignore
+    parse_callback: Callable[..., Tuple[str, int, Iterable[T_Single]]],
     max_files_per_dir: Optional[int],
     parallelize: bool,
     *args,
@@ -322,12 +320,12 @@ def build_lang_dataset_siamese_tokenizer(
         return InputFeatures(
             language=data_params.lang_ids[cast(str, sample["language"])],
             similarity=cast(int, sample["similarity"]),
-            query_tokens=sample["query_tokens_func_name_as_query"],
-            query_tokens_mask=sample["query_tokens_mask_func_name_as_query"],
-            query_docstring_tokens=sample["query_tokens_docstring_as_query"],
-            query_docstring_tokens_mask=sample["query_tokens_mask_docstring_as_query"],
-            code_tokens=sample["code_tokens_func_name_as_query"],
-            code_tokens_mask=sample["code_tokens_mask_func_name_as_query"],
+            query_tokens=cast(np.ndarray, sample["query_tokens_func_name_as_query"]),
+            query_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_func_name_as_query"]),
+            query_docstring_tokens=cast(np.ndarray, sample["query_tokens_docstring_as_query"]),
+            query_docstring_tokens_mask=cast(np.ndarray, sample["query_tokens_mask_docstring_as_query"]),
+            code_tokens=cast(np.ndarray, sample["code_tokens_func_name_as_query"]),
+            code_tokens_mask=cast(np.ndarray, sample["code_tokens_mask_func_name_as_query"]),
         )
 
     def parser(
@@ -381,7 +379,7 @@ def build_lang_dataset_siamese_tokenizer(
         transform=transform,
         use_lang_weights=use_lang_weights,
         embedding_model=embedding_model,
-        tokenizer=tokenizer,
+        query_tokenizer=tokenizer,
         emb_annoy_path=Path(pickle_path) / f"{name}_embeddings.ann",
     )
     logger.debug(f"Loaded {name} lang dataset [{len(dataset)} samples]")
@@ -569,7 +567,7 @@ def load_data_from_files_ast(
 ) -> Dict[str, pd.DataFrame]:
     tasks_as_args = [[data_file, data_params, tokenizer, ast_parser] for data_file in data_files]
 
-    per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore
+    per_file_results = [parse_callback(*task_args) for task_args in tasks_as_args]  # type: ignore[arg-type]
 
     lang_samples_iter: Dict[str, List[pd.DataFrame]] = {}
     for (lang, df) in per_file_results:
@@ -669,9 +667,9 @@ def build_lang_dataset_ast(
         lang_ids=data_params.lang_ids,
         transform=transform,
         use_lang_weights=data_params.use_lang_weights,
-        embedding_model=None,
-        tokenizer=tokenizer,
-        emb_annoy_path=Path(pickle_path) / f"{name}_embeddings.ann",
+        # embedding_model=None,
+        # tokenizer=tokenizer,
+        # emb_annoy_path=Path(pickle_path) / f"{name}_embeddings.ann",
     )
     logger.debug(f"Loaded {name} lang dataset [{len(dataset)} samples]")
     return dataset

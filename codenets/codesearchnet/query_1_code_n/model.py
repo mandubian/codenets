@@ -61,9 +61,9 @@ class Query1CodeN(RecordableTorchModule):
     def load(cls, restore_dir: Union[Path, str]) -> Query1CodeN:
         d = Path(restore_dir) / full_classname(cls)
         records = runtime_load_recordable_mapping(d)
-        return cls(**records)
+        return cls(**records) # type: ignore[arg-type]
 
-    def forward(  # type: ignore
+    def forward(
         self,
         languages: np.ndarray,
         query_tokens: np.ndarray,

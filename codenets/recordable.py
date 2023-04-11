@@ -1,5 +1,7 @@
 """The Recordable Typeclass-like or behavior-like Python interface"""
 
+from __future__ import annotations
+from abc import abstractmethod
 import json
 import os
 import shutil
@@ -11,7 +13,7 @@ from torch import nn
 import pickle
 
 from pyhocon import ConfigFactory, ConfigTree, HOCONConverter
-from codenets.utils import full_classname, instance_full_classname, runtime_import
+from codenets.utils import full_classname, instance_full_classname, runtime_import, listdir_nohidden
 
 # The Type of a class that can be loaded using Recordable.load classmethod
 Recordable_T = TypeVar("Recordable_T", bound="Recordable")
@@ -20,11 +22,13 @@ Recordable_T = TypeVar("Recordable_T", bound="Recordable")
 class Recordable:
     """A recordable is something that be saved or loaded from a directory"""
 
+    @abstractmethod
     def save(self, output_dir: Union[Path, str]) -> bool:
         """Save an instance of recordable to a directory"""
         pass
 
     @classmethod
+    @abstractmethod
     def load(cls: Type[Recordable_T], restore_dir: Union[Path, str]) -> Recordable_T:
         """Load an instance of Class cls that is recordable from a restore directory"""
         pass
@@ -38,12 +42,11 @@ class NoneRecordable(Recordable):
         return True
 
     @classmethod
-    def load(cls, restore_dir: Union[Path, str]) -> "NoneRecordable":
+    def load(cls, restore_dir: Union[Path, str]) -> NoneRecordable:
         return NoneRecordable()
 
 
 Module_T = TypeVar("Module_T", bound="nn.Module")
-
 
 class RecordableTorchModule(nn.Module, Recordable):
     """A classic Pytorch module that is recordable"""
@@ -83,14 +86,14 @@ def runtime_load_recordable(dir: Union[Path, str]) -> Recordable:
     Returns:
         RecordableTorchModule: the Recordable instantiated from the subdirectory name
     """
-    cls_name = os.listdir(dir)[0]
+    cls_name = listdir_nohidden(dir)[0]
     # TODO Check cls_name is a Recordable subclass
     klass = runtime_import(cls_name)
     recordable = klass.load(Path(dir))
     return recordable
 
 
-def runtime_load_recordable_module(dir: Union[Path, str]) -> RecordableTorchModule:
+def _runtime_load_recordable_module(dir: Union[Path, str]) -> RecordableTorchModule:
     """
     Runtime factory using the first subdirectory name as the RecordableTorchModule class name to instantiate
     
@@ -100,7 +103,7 @@ def runtime_load_recordable_module(dir: Union[Path, str]) -> RecordableTorchModu
     Returns:
         RecordableTorchModule: the Recordable instantiated from the subdirectory name
     """
-    cls_name = os.listdir(dir)[0]
+    cls_name = listdir_nohidden(dir)[0]
     # TODO Check cls_name is a Recordable subclass
     klass = runtime_import(cls_name)
     recordable = klass.load(Path(dir))
@@ -122,7 +125,7 @@ class HoconConfigRecordable(Recordable):
         return True
 
     @classmethod
-    def load(cls, restore_dir: Union[Path, str]) -> "HoconConfigRecordable":
+    def load(cls, restore_dir: Union[Path, str]) -> HoconConfigRecordable:
         conf_file = Path(restore_dir) / full_classname(cls) / "config.conf"
         logger.info(f"Loading Config File from {conf_file}")
         conf: ConfigTree = ConfigFactory.parse_file(conf_file)
@@ -156,8 +159,6 @@ class ConfigFileRecordable(Recordable):
         logger.info(f"Loading Config File {files[0]} from {d}")
         return ConfigFileRecordable(d / files[0])
 
-
-PickleRecordable_T = TypeVar("PickleRecordable_T")
 
 
 class DictRecordable(Recordable, Dict):
@@ -206,7 +207,7 @@ def runtime_load_recordable_mapping(
 ) -> Mapping[str, Recordable]:
     d = Path(restore_dir)
     records: MutableMapping[str, Recordable] = {}
-    for subdir in sorted(os.listdir(d)):
+    for subdir in sorted(listdir_nohidden(d)):
         if len(accepted_keys) > 0 and subdir not in accepted_keys:
             logger.debug(f"skipping recordables from {subdir}")
             continue
@@ -234,7 +235,7 @@ class RecordableMapping(Recordable, Dict):
     def load(cls: Type[RecordableMapping_T], restore_dir: Union[Path, str]) -> RecordableMapping_T:
         d = Path(restore_dir) / full_classname(cls)
         records: Dict[str, Recordable] = {}  # OrderedDict()
-        for subdir in sorted(os.listdir(d)):
+        for subdir in sorted(listdir_nohidden(d)):
             logger.debug(f"RecordableMapping - Loading {subdir}")
             records[subdir] = runtime_load_recordable(d / subdir)
         # return cls.from_dict_recordable(records)
@@ -246,7 +247,7 @@ RecordableTorchModuleMapping_T = TypeVar("RecordableTorchModuleMapping_T", bound
 
 class RecordableTorchModuleMapping(nn.ModuleDict, Recordable):
     # Can't inherit from RecordableMapping because it inherits Dict
-    # and ModuleDict vs Dict colldies
+    # and ModuleDict vs Dict collides
     def __init__(self, records: Mapping[str, RecordableTorchModule]):
         # Forcing calls of super __init__ as visible python can go that far with super-typing
         nn.ModuleDict.__init__(self, records)
@@ -265,7 +266,7 @@ class RecordableTorchModuleMapping(nn.ModuleDict, Recordable):
     ) -> RecordableTorchModuleMapping_T:
         d = Path(restore_dir) / full_classname(cls)
         records: Dict[str, RecordableTorchModule] = {}  # OrderedDict()
-        for subdir in sorted(os.listdir(d)):
+        for subdir in sorted(listdir_nohidden(d)):
             logger.debug(f"Loading {subdir}")
-            records[subdir] = runtime_load_recordable_module(d / subdir)
+            records[subdir] = _runtime_load_recordable_module(d / subdir)
         return cls(records)

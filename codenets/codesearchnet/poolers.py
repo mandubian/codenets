@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import abstractmethod
 from torch import nn
 import torch
 from codenets.recordable import RecordableTorchModule
@@ -16,7 +17,8 @@ class EmbeddingPooler(RecordableTorchModule):
         tensor: [B x D]
     """
 
-    def forward(self, seq_outputs: torch.Tensor, tokens_mask: torch.Tensor) -> torch.Tensor:  # type: ignore
+    @abstractmethod
+    def forward(self, seq_outputs: torch.Tensor, tokens_mask: torch.Tensor) -> torch.Tensor:
         pass
 
 
@@ -27,7 +29,7 @@ class MeanPooler(EmbeddingPooler):
         self.activation = nn.Sigmoid()
         self.eps = eps
 
-    def forward(self, seq_outputs: torch.Tensor, tokens_mask: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, seq_outputs: torch.Tensor, tokens_mask: torch.Tensor) -> torch.Tensor:
         # TO TEST
         lg = torch.sum(tokens_mask, dim=-1)
         mask = tokens_mask.unsqueeze(dim=-1)
@@ -44,7 +46,7 @@ class MeanWeightedPooler(EmbeddingPooler):
         self.activation = nn.Sigmoid()
         self.eps = eps
 
-    def forward(self, seq_outputs: torch.Tensor, tokens_mask: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, seq_outputs: torch.Tensor, tokens_mask: torch.Tensor) -> torch.Tensor:
         token_weights = self.activation(self.dense(seq_outputs))  # B x T x 1
         token_weights = token_weights * tokens_mask.unsqueeze(dim=-1)  # B x T x 1
         # sum on the T dimension

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, fields as datafields
 import numpy as np
 
-from typing import Dict, TypeVar, Type, List
+from typing import Dict, TypeVar, List
 from dataclasses import field
 
 
@@ -51,11 +51,6 @@ class InputFeatures:
 
     code_tokens: np.ndarray
     code_tokens_mask: np.ndarray
-
-    # @classmethod
-    # def from_dict(cls: Type[T_InputFeatures], dikt) -> T_InputFeatures:
-    #     """Create an instance of dataclass from a dict
-    #     return cls(**dikt)
 
 
 def dataclass_from_dict(klass, dikt):

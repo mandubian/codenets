@@ -46,7 +46,7 @@ def append_metadata(
     encoder_label: str,
     vocab_size: int,
     vocab_count_threshold: int,
-    use_bpe: bool,
+    # use_bpe: bool,
     pct_bpe: float,
     raw_metadata_list: List[Metadata],
 ) -> Metadata:
@@ -56,8 +56,8 @@ def append_metadata(
         merged_token_counter += raw_metadata.token_counter
 
     # if hyperparameters["%s_use_bpe" % encoder_label]:
-    token_vocabulary: Vocabulary
-    if use_bpe:
+    # token_vocabulary: Vocabulary
+    # if use_bpe:
         token_vocabulary = BpeVocabulary(
             # vocab_size=hyperparameters["%s_token_vocab_size" % encoder_label],
             vocab_size=vocab_size,
@@ -65,14 +65,14 @@ def append_metadata(
             pct_bpe=pct_bpe,
         )
         token_vocabulary.fit(merged_token_counter)
-    else:
-        token_vocabulary = Vocabulary.create_vocabulary(
-            tokens=merged_token_counter,
-            # max_size=hyperparameters["%s_token_vocab_size" % encoder_label],
-            max_size=vocab_size,
-            # count_threshold=hyperparameters["%s_token_vocab_count_threshold" % encoder_label],
-            count_threshold=vocab_count_threshold,
-        )
+    # else:
+    #     token_vocabulary = Vocabulary.create_vocabulary(
+    #         tokens=merged_token_counter,
+    #         # max_size=hyperparameters["%s_token_vocab_size" % encoder_label],
+    #         max_size=vocab_size,
+    #         # count_threshold=hyperparameters["%s_token_vocab_count_threshold" % encoder_label],
+    #         count_threshold=vocab_count_threshold,
+    #     )
 
     # final_metadata["token_vocab"] = token_vocabulary
     # Save the most common tokens for use in data augmentation:

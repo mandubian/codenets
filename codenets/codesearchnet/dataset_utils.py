@@ -2,7 +2,7 @@
 # modified to consume less memory because it was exploding my 32GB RAM as provided
 # on original code :(
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Iterator, Callable
 import re
@@ -10,16 +10,13 @@ import re
 import numpy as np
 import random
 import torch
-import os
 from pathlib import Path
-from torch.utils.data import Dataset, TensorDataset, ConcatDataset, RandomSampler, Sampler
+from torch.utils.data import Dataset, ConcatDataset, RandomSampler, Sampler
 from torch import Tensor
 from dpu_utils.codeutils import split_identifier_into_parts
 
 from loguru import logger
 import functools
-import sklearn
-from sklearn.metrics.pairwise import pairwise_distances, cosine_similarity
 import pandas as pd
 from tqdm import tqdm
 from enum import Enum
@@ -234,10 +231,12 @@ class InputFeaturesToNpArray_RandomReplace(object):
             query_tokens = feat.query_docstring_tokens
             query_tokens_mask = feat.query_docstring_tokens_mask
 
-        code_tokens = feat.code_tokens
-        code_tokens_mask = feat.code_tokens_mask
-        language = feat.language
-        similarity = feat.similarity
+        code_tokens: np.ndarray = feat.code_tokens
+        code_tokens_mask: np.ndarray = feat.code_tokens_mask
+        language: int = feat.language
+        similarity: float = feat.similarity
+
+        lang_weights: float
         if self.lang_weights is not None:
             lang_weights = self.lang_weights[feat.language]
         else:
@@ -270,7 +269,7 @@ class InputFeaturesToNpArray_RandomReplace(object):
                 # Add the needed number of non-padding values to the mask:
                 query_tokens_mask[length_without_padding : length_without_padding + len(tokens_to_add)] = 1.0
 
-        return [idx, language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+        return [np.array(idx), np.array(language), np.array(similarity), query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, np.array(lang_weights)]
 
 
 class FullNpArrayToFinalNpArray(object):
@@ -298,14 +297,15 @@ class FullNpArrayToFinalNpArray(object):
         code_tokens = feat[6]
         code_tokens_mask = feat[7]
 
-        language = feat[0]
-        similarity = feat[1]
+        language: int = feat[0]
+        similarity: float = feat[1]
+        lang_weights: float
         if self.lang_weights is not None:
             lang_weights = self.lang_weights[language]
         else:
             lang_weights = 1.0
 
-        return [idx, language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+        return [np.array(idx), np.array(language), np.array(similarity), query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, np.array(lang_weights)]
 
 
 class PDSeriesToNpArray(object):
@@ -333,14 +333,15 @@ class PDSeriesToNpArray(object):
         code_tokens = feat["code_tokens"]
         code_tokens_mask = feat["code_masks"]
 
-        language = feat["lang"]
-        similarity = feat["similarity"]
+        language: int = feat["lang"]
+        similarity: float = feat["similarity"]
+        lang_weights: float
         if self.lang_weights is not None:
             lang_weights = self.lang_weights[language]
         else:
             lang_weights = 1.0
 
-        return [idx, language, similarity, query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, lang_weights]
+        return [np.array(idx), np.array(language), np.array(similarity), query_tokens, query_tokens_mask, code_tokens, code_tokens_mask, np.array(lang_weights)]
 
 
 class Tensorize(object):
@@ -383,6 +384,12 @@ class Compose(object):
         return format_string
 
 
+class EmbeddingModel(ABC):
+    @abstractmethod
+    def encode(self, sentence: str) -> np.ndarray:
+        pass
+
+
 class LangDataset(ConcatNamedDataset):
     """
     Dataset wrapping language features.
@@ -397,12 +404,12 @@ class LangDataset(ConcatNamedDataset):
         self,
         lang_features: Dict[str, Tuple[int, Iterable[InputFeatures]]],
         lang_ids: Dict[str, int],
-        transform: Callable[[InputFeatures, int], List[np.ndarray]],
-        use_lang_weights: bool = False,
+        transform: Callable[[InputFeatures, int], List[Tensor]],
         # query_embeddings: Optional[Dict[str, Tuple[int, Iterable[np.ndarray]]]] = None,
-        embedding_model=None,
-        tokenizer=None,
-        emb_annoy_path: Path = None,
+        query_tokenizer: TokenizerRecordable,
+        embedding_model: Optional[EmbeddingModel],
+        emb_annoy_path: Optional[Path] = None,
+        use_lang_weights: bool = False,
     ):
         super(LangDataset, self).__init__()
 
@@ -423,19 +430,19 @@ class LangDataset(ConcatNamedDataset):
             for s in samples:
                 toks_len = len(s.query_tokens_mask[s.query_tokens_mask != 0])
                 toks = s.query_tokens[: len(s.query_tokens_mask[s.query_tokens_mask != 0])]
-                toks = tokenizer.decode_sequence(toks)
-                toks_1 = re.sub(r"[^a-zA-Z0-9\s]+", "", toks[5:]).strip()
+                toks_str = query_tokenizer.decode_sequence(toks.tolist())
+                toks_str = re.sub(r"[^a-zA-Z0-9\s]+", "", toks_str[5:]).strip()
                 docs_len = len(s.query_docstring_tokens_mask[s.query_docstring_tokens_mask != 0])
                 docs = s.query_docstring_tokens[:docs_len]
-                docs = tokenizer.decode_sequence(docs)
-                docs_1 = re.sub(r"[^a-zA-Z0-9\s]+", "", docs[5:]).strip()
+                docs_str = query_tokenizer.decode_sequence(docs.tolist())
+                docs_str = re.sub(r"[^a-zA-Z0-9\s]+", "", docs_str[5:]).strip()
 
-                if toks_len < 3 or len(toks_1) == 0:
+                if toks_len < 3 or len(toks_str) == 0:
                     bad_tok = True
                 else:
                     bad_tok = False
 
-                if docs_len < 2 or len(docs_1) == 0:
+                if docs_len < 2 or len(docs_str) == 0:
                     bad_doc = True
                 else:
                     bad_doc = False
@@ -477,7 +484,7 @@ class LangDataset(ConcatNamedDataset):
         self.concat_dataset: ConcatDataset = ConcatDataset(self.datasets)
         logger.info(f"Concat_dataset [{len(self.concat_dataset)} samples]")
 
-        all_embs_df: pd.DataFrame
+        # all_embs_df: pd.DataFrame
         if embedding_model is not None:
             from annoy import AnnoyIndex
 
@@ -495,9 +502,9 @@ class LangDataset(ConcatNamedDataset):
                     ts = sample[3]
                     mask = sample[4]
                     toks = ts.cpu().numpy()[: len(mask[mask != 0])]
-                    s = tokenizer.decode_sequence(toks)
+                    s = query_tokenizer.decode_sequence(toks)
                     s = re.sub(r"[^a-zA-Z0-9\s]+", "", s[5:]).strip()
-                    embs = embedding_model.encode([s])
+                    embs = embedding_model.encode(s)
                     annoy_index.add_item(idx, embs[0])
                 annoy_index.build(10)  # 10 trees
                 annoy_index.save(str(emb_annoy_path))
@@ -614,12 +621,12 @@ class LangDatasetDF(ConcatNamedDataset):
         self,
         lang_features_df: Dict[str, pd.DataFrame],
         lang_ids: Dict[str, int],
-        transform: Callable[[pd.Series, int], List[np.ndarray]],
+        transform: Callable[[pd.Series, int], List[Tensor]],
         use_lang_weights: bool = False,
         # query_embeddings: Optional[Dict[str, Tuple[int, Iterable[np.ndarray]]]] = None,
-        embedding_model=None,
-        tokenizer=None,
-        emb_annoy_path: Path = None,
+        # embedding_model=None,
+        # tokenizer=None,
+        # emb_annoy_path: Optional[Path],
     ):
         super(LangDatasetDF, self).__init__()
 
@@ -728,9 +735,9 @@ class BalancedBatchSchedulerSampler(torch.utils.data.sampler.Sampler):
         for idx, (lang_id, lang, dataset_count) in enumerate(self.datasets_by_desc_size):
             cur_dataset = self.dataset.get_dataset_by_lang_id(lang_id)
             logger.debug(
-                f"Sampling batches from Dataset[lang_id:{lang_id}, count:{dataset_count}, len:{len(cur_dataset)} lang:{lang}]"
+                f"Sampling batches from Dataset[lang_id:{lang_id}, count:{dataset_count}, len:{len(cur_dataset)} lang:{lang}]"  # type:ignore[arg-type]
             )
-            sampler = RandomSampler(cur_dataset)
+            sampler = RandomSampler(cur_dataset)  # type: ignore[arg-type]
 
             self.samplers_list.append(sampler)
             cur_sampler_iterator = sampler.__iter__()

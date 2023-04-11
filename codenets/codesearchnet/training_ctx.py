@@ -1,3 +1,4 @@
+from abc import abstractmethod
 import os
 import torch
 from typing import (
@@ -12,8 +13,6 @@ from typing import (
     Generic,
     NewType,
     Iterable,
-    Callable,
-    Dict,
 )
 from pathlib import Path
 from loguru import logger
@@ -23,10 +22,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from transformers import AdamW
 import numpy as np
-from codenets.codesearchnet.copied_code.utils import read_file_samples
-from codenets.codesearchnet.query_code_siamese.dataset import load_data_from_dirs
-import pickle
-
 
 from codenets.tensorboard_utils import Tensorboard
 from codenets.recordable import (
@@ -35,6 +30,7 @@ from codenets.recordable import (
     HoconConfigRecordable,
     DictRecordable,
     runtime_load_recordable,
+    RecordableTorchModule
 )
 from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.dataset_utils import ConcatNamedDataset, DatasetType
@@ -46,7 +42,7 @@ def default_sample_update(tpe: str, lang: str, tokens: List[str]) -> str:
     return " ".join(tokens) + "\r\n"
 
 
-Model_T = TypeVar("Model_T", bound="RecordableTorchModule")  # type: ignore
+Model_T = TypeVar("Model_T", bound="RecordableTorchModule")
 ModelAndAdamWRecordable_T = TypeVar("ModelAndAdamWRecordable_T", bound="ModelAndAdamWRecordable")
 
 # Testing Newtypes to force more type safety in code
@@ -175,7 +171,7 @@ def __apply_mask_and_get_true_sorted_by_preds(y_pred: Tensor, y_true: Tensor, pa
 
 def dcg(y_pred: Tensor, y_true: Tensor, device: torch.device, ats=None, gain_function=lambda x: torch.pow(2, x) - 1):
     """
-    Cmpute Discounted Cumulative Gain at k.
+    Compute Discounted Cumulative Gain at k.
     Compute DCG at ranks given by ats or at the maximum rank if ats is None.
     :param y_pred: predictions from the model, shape [batch_size, slate_length]
     :param y_true: ground truth labels, shape [batch_size, slate_length]
@@ -213,14 +209,12 @@ class ModelAndAdamWRecordable(Generic[Model_T], Recordable):
     we need to load both together or it's no generic.
     It is linked to optimizer AdamW because it's impossible to load
     something you don't know the class... Not very elegant too...
-    For now, it doesn't manage the device of the model which is an issue
-    but I haven't found an elegant solution to do that...
     To be continued
     """
 
     model_type: Model_T
 
-    def __init__(self, model: Model_T, optimizer: AdamW):  # type: ignore
+    def __init__(self, model: Model_T, optimizer: AdamW):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -234,7 +228,7 @@ class ModelAndAdamWRecordable(Generic[Model_T], Recordable):
         return True
 
     @classmethod
-    def load(cls: Type[ModelAndAdamWRecordable_T], restore_dir: Union[Path, str]) -> "ModelAndAdamWRecordable_T":
+    def load(cls: Type[ModelAndAdamWRecordable_T], restore_dir: Union[Path, str]) -> ModelAndAdamWRecordable_T:
         full_dir = Path(restore_dir) / full_classname(cls)
         logger.debug(f"Loading {full_classname(cls)} & AdamW optimizer from {full_dir}")
         model = cls.model_type.load(full_dir)
@@ -347,18 +341,22 @@ class CodeSearchTrainingContext(RecordableMapping):
         return cls(records)
 
     @classmethod
+    @abstractmethod
     def from_hocon_custom(cls: Type[CodeSearchTrainingContext_T], conf: ConfigTree) -> Mapping[str, Recordable]:
         """Add custom recordable elements at load... To be implemented in custom Training Ctx"""
         pass
 
+    @abstractmethod
     def train_mode(self) -> bool:
         """Set all necessary elements in train mode"""
         pass
 
+    @abstractmethod
     def eval_mode(self) -> bool:
         """Set all necessary elements in train mode"""
         pass
 
+    @abstractmethod
     def forward(self, batch: List[Tensor], batch_idx: int) -> Tuple[Tensor, Tensor]:
         """
         Perform forward path on batch
@@ -368,50 +366,61 @@ class CodeSearchTrainingContext(RecordableMapping):
             batch_idx (int): the batch index in dataloader
         
         Returns:
-            Tuple[Tensor, Tensor, Tensor]: (global loss tensor for all samples in batch, tensor matrix of similarity scores between all samples)
+            Tuple[Tensor, Tensor]: (global loss tensor for all samples in batch, tensor matrix of similarity scores between all samples)
         """
         pass
 
+    @abstractmethod
     def backward_optimize(self, loss: Tensor) -> Tensor:
         """Perform backward pass from loss"""
         pass
 
+    @abstractmethod
     def zero_grad(self) -> bool:
         """Set all necessary elements to zero_grad"""
         pass
 
+    @abstractmethod
     def build_lang_dataset(self, dataset_type: DatasetType) -> ConcatNamedDataset:
         """Build language dataset using custom training context tokenizers"""
         pass
 
+    @abstractmethod
     def build_lang_dataloader(self, dataset_type: DatasetType) -> DataLoader:
         """Build language dataset using custom training context tokenizers"""
         pass
 
+    @abstractmethod
     def encode_query(self, query_tokens: np.ndarray, query_tokens_mask: np.ndarray) -> np.ndarray:
         pass
 
-    def encode_code(self, lang_id: int, code_tokens, code_tokens_mask: np.ndarray) -> np.ndarray:
+    @abstractmethod
+    def encode_code(self, lang_id: int, code_tokens: np.ndarray, code_tokens_mask: np.ndarray) -> np.ndarray:
         pass
 
+    @abstractmethod
     def tokenize_query_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
+    @abstractmethod
     def tokenize_code_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
+    @abstractmethod
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
+    @abstractmethod
     def decode_query_tokens(self, tokens: Iterable[List[int]]) -> List[str]:
         pass
 
+    @abstractmethod
     def build_tokenizers(self, from_dataset_type: DatasetType) -> bool:
         pass
 
@@ -443,6 +452,7 @@ class CodeSearchTrainingContext(RecordableMapping):
         return ctx
 
     @classmethod
+    @abstractmethod
     def merge_contexts(
         cls: Type[CodeSearchTrainingContext_T],
         fresh_ctx: CodeSearchTrainingContext_T,
@@ -459,50 +469,3 @@ class CodeSearchTrainingContext(RecordableMapping):
         ctx1 = klass.build_context_from_hocon(conf)
         ctx2 = klass.build_context_from_dir(dir)
         return klass.merge_contexts(ctx1, ctx2)
-
-    # def get_embeddings(self, dataset_type: DatasetType) -> Optional[Dict[str, Tuple[int, Iterable[np.ndarray]]]]:
-    #     data_params: DatasetParams
-    #     dirs: List[Path]
-    #     if dataset_type == DatasetType.TRAIN:
-    #         data_params = self.train_data_params
-    #         dirs = self.train_dirs
-    #     elif dataset_type == DatasetType.VAL:
-    #         data_params = self.val_data_params
-    #         dirs = self.val_dirs
-    #     elif dataset_type == DatasetType.TEST:
-    #         data_params = self.test_data_params
-    #         dirs = self.test_dirs
-
-    #     if data_params.query_embeddings == "sbert":
-    #         logger.info(f"Activating SBERT {dataset_type.value} Embeddings")
-    #         emb_pickle_path = Path(self.conf["embeddings.sbert.pickle_path"])
-    #         emb_pickle_file = emb_pickle_path / f"query_embeddings_{dataset_type.value}.p"
-    #         model = self.conf["embeddings.sbert.model"]
-    #         self.embedding_model = SentenceTransformer(model)
-    #         if not emb_pickle_file.exists():
-    #             logger.info(f"Re-Building SBERT {dataset_type.value} Embeddings")
-
-    #             def parse(data_file: Path, data_params: DatasetParams, model: SentenceTransformer):
-    #                 logger.info(f"Sbert encoding samples in {data_file}")
-    #                 filename = os.path.basename(data_file)
-    #                 file_language = filename.split("_")[0]
-    #                 samples = list(read_file_samples(data_file))
-    #                 queries = [" ".join(s["docstring_tokens"]) for s in samples]
-    #                 query_embeddings = model.encode(queries)
-
-    #                 return (file_language, len(samples), query_embeddings)
-
-    #             # model = SentenceTransformer(model)
-
-    #             embeddings = load_data_from_dirs(dirs, parse, None, False, data_params, self.embedding_model)
-
-    #             logger.info(f"Pickling Sbert embedding to {emb_pickle_file}")
-    #             pickle.dump(embeddings, open(emb_pickle_file, "wb"))
-    #         else:
-    #             logger.info(f"Loading pickled embedding from {emb_pickle_file}")
-    #             embeddings = pickle.load(open(emb_pickle_file, "rb"))
-
-    #         return embeddings
-
-    #     else:
-    #         return None

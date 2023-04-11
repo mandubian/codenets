@@ -1,4 +1,4 @@
-"""Main of the project."""
+"""Dummy Main of the project."""
 
 
 def main():

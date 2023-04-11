@@ -1,14 +1,15 @@
-from typing import Iterable, List, Optional, Tuple, Union, Dict, cast, Callable, IO
+from __future__ import annotations
+from typing import Iterable, List, Optional, Tuple, Union, Dict, Callable, IO
 import numpy as np
 import os
 from loguru import logger
 from pathlib import Path
 from transformers import PreTrainedTokenizer, BertTokenizer
 
-from tokenizers import BPETokenizer
-from codenets.recordable import Recordable, instance_full_classname, full_classname, RecordableMapping
+from tokenizers import CharBPETokenizer, Encoding
+
+from codenets.recordable import instance_full_classname, full_classname
 from codenets.codesearchnet.data import DatasetParams
-from codenets.codesearchnet.copied_code.metadata import Metadata, append_metadata, build_tokenizer_metadata
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.copied_code.utils import read_file_samples
 from codenets.utils import get_data_files_from_directory
@@ -28,9 +29,6 @@ class PreTrainedTokenizerRecordable(TokenizerRecordable):
     def unk_token(self) -> str:
         return self.vocab.unk_token()
 
-    # def pad_token(self) -> str:
-    #     return self.vocab.pad_token()
-
     def encode_sentence(self, sentence: str, max_length: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
         encoded = self.vocab.encode_plus(
             sentence,
@@ -45,7 +43,7 @@ class PreTrainedTokenizerRecordable(TokenizerRecordable):
 
     def encode_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         encoded = self.vocab.batch_encode_plus(
             sentences,
             max_length=max_length,
@@ -59,8 +57,8 @@ class PreTrainedTokenizerRecordable(TokenizerRecordable):
 
     def encode_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        encoded = self.vocab.batch_encode_plus(
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        encoded = self.vocab(
             tokens,
             max_length=max_length,
             pad_to_max_length=max_length is not None,
@@ -102,15 +100,14 @@ class BertTokenizerRecordable(PreTrainedTokenizerRecordable):
 
 
 class HuggingfaceBPETokenizerRecordable(TokenizerRecordable):
-    def __init__(self, vocab: BPETokenizer):
-        self.vocab = vocab
+    def __init__(self, tokenizer: CharBPETokenizer):
+        self.tokenizer = tokenizer
 
     def tokenize(self, text: str, **kwargs) -> List[str]:
-        return self.vocab.encode(text).tokens
+        return self.tokenizer.encode(text).tokens
 
     def convert_tokens_to_ids(self, tokens: List[str]) -> List[int]:
-        return [self.vocab.token_to_id(tok) for tok in tokens]
-        # return self.vocab.convert_tokens_to_ids(tokens)
+        return [self.tokenizer.token_to_id(tok) for tok in tokens]
 
     def unk_token(self) -> str:
         # no access to that in
@@ -120,7 +117,7 @@ class HuggingfaceBPETokenizerRecordable(TokenizerRecordable):
     #     return self.vocab.pad_token()
 
     def encode_sentence(self, sentence: str, max_length: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        enc = self.vocab.encode(sentence)
+        enc: Encoding = self.tokenizer.encode(sentence)
         if max_length is not None:
             enc.truncate(max_length)
             enc.pad(max_length)
@@ -128,53 +125,54 @@ class HuggingfaceBPETokenizerRecordable(TokenizerRecordable):
 
     def encode_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        encs = self.vocab.encode_batch(sentences)
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        encs = self.tokenizer.encode_batch(sentences)
         if max_length is not None:
             for enc in encs:
                 enc.truncate(max_length)
                 enc.pad(max_length)
-        tokens_ids = [np.array(enc.ids) for enc in encs]
-        attention_mask = [np.array(enc.attention_mask) for enc in encs]
-        return (tokens_ids, attention_mask)
+        # tokens_ids = [np.array(enc.ids) for enc in encs]
+        # attention_mask = [np.array(enc.attention_mask) for enc in encs]
+        tokens_ids = [enc.ids for enc in encs]
+        attention_mask = [enc.attention_mask for enc in encs]
+        return (np.array(tokens_ids), np.array(attention_mask))
 
     def encode_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         # hack...
         sentences = [" ".join(toks) for toks in tokens]
         return self.encode_sentences(sentences, max_length)
 
     def decode_sequence(self, tokens_sequence: List[int]) -> str:
-        return self.vocab.decode(tokens_sequence)
+        return self.tokenizer.decode(tokens_sequence)
 
     def decode_sequences(self, tokens_sequences: Iterable[List[int]]) -> List[str]:
-        return self.vocab.decode_batch(tokens_sequences)
+        return self.tokenizer.decode_batch(tokens_sequences)
 
     def save(self, output_dir: Union[Path, str]) -> bool:
         full_dir = Path(output_dir) / instance_full_classname(self)
         logger.debug(f"HuggingfaceBPETokenizerRecordable - Saving to {full_dir}")
         os.makedirs(full_dir, exist_ok=True)
 
-        self.vocab._tokenizer.model.save(str(full_dir), name=str(instance_full_classname(self)))
+        self.tokenizer._tokenizer.model.save(str(full_dir), name=str(instance_full_classname(self)))
         return True
 
     @classmethod
-    def load(cls, restore_dir: Union[Path, str]) -> "HuggingfaceBPETokenizerRecordable":
+    def load(cls, restore_dir: Union[Path, str]) -> HuggingfaceBPETokenizerRecordable:
         full_dir = Path(restore_dir) / full_classname(cls)
         logger.debug(f"HuggingfaceBPETokenizerRecordable - Loading from {full_dir}")
-        # vocab = pickle.load(open(full_dir / "vocab.pth", "rb"))
-        # model = models.BPE.from_files(
-        #     full_dir / f"{full_classname(cls)}_vocab.json", full_dir / f"{full_classname(cls)}_merges.json"
-        # )
-        tokenizer = BPETokenizer(
-            vocab_file=str(full_dir / f"{full_classname(cls)}-vocab.json"),
-            merges_file=str(full_dir / f"{full_classname(cls)}-merges.txt"),
+        vocab = str(full_dir / f"{full_classname(cls)}-vocab.json")
+        merges = str(full_dir / f"{full_classname(cls)}-merges.txt")
+        tokenizer = CharBPETokenizer(
+            vocab=vocab,
+            merges=merges
         )
+
         return HuggingfaceBPETokenizerRecordable(tokenizer)
 
     def add_special_tokens(self, special_tokens: List[str]) -> bool:
-        self.vocab.add_special_tokens(special_tokens)
+        self.tokenizer.add_special_tokens(special_tokens)
         return True
 
 

@@ -17,6 +17,7 @@ At the same time, I want to use this code base to evaluate advanced programming 
 The current code is a ~80% rewrite of the original [Github repository](https://github.com/github/CodeSearchNet) open-sourced by Microsoft team with a paper and blog post with a benchmark on W&B and the Github CodeSearchNet dataset.
 
 > Why did I rewrite an already complete library?
+
 - to use the dataset independently of Tensorflow as existing code is really focused on it (Pytorch is my current choice for NLP until I find another one ;)).
 - to be able to use the best NLP Deep Learning library for now [Huggingface Transformers](https://github.com/huggingface/transformers) and more recently their new beta project [Huggingface Rust Tokenizers](https://github.com/huggingface/tokenizers) and I must say it's much better used in Pytorch.
 
@@ -44,21 +45,20 @@ https://app.wandb.ai/mandubian/codenets
 - Type error detection by Deep Learning
 - Type logic & reasoning by Deep Learning
 
-
 ## Installing project
 
 ### Install poetry
 
 Following instructions to install [Poetry](https://python-poetry.org/docs/).
 
->Why poetry instead of basic requirements.txt?
+> Why poetry instead of basic requirements.txt?
 
 Because its dependency management is more automatic. Poetry has big defaults & bugs but its dependency management is much more production ready than other Python solutions I've tested and it isolates by default your python environment in a virtual env (The other best solution I've found is a hand-made virtualenv in which I install all my dependencies with a requirements.txt).
 
 ### Install a decent Python (with pyenv for example)
 
 ```sh
-pyenv local 3.7.2
+pyenv local 3.10.1
 ```
 
 > Please python devs, stop using Python 2.x, this is not possible anymore to use such bloated oldies.
@@ -120,11 +120,9 @@ python codenets/codesearchnet/eval.py --restore ./checkpoints/YOUR_RUN_DIRECTORY
 python codenets/codesearchnet/predictions.py --restore ./checkpoints/YOUR_RUN_DIRECTORY
 ```
 
-
 ### Experiments
 
 > I haven't submitted any model to official leaderboard https://app.wandb.ai/github/codesearchnet/benchmark/leaderboard because you can submit only every 2 weeks and I'm experimenting many different models during such long period so I prefer to keep searching for better models instead of submitting. But you can compute your NDCG metrics on the benchmark website and it is stored in your W&B run so this is what I use for now to evaluate my experiments.
-
 
 _Please note that all experiments are currently done on my own 1080TI GPU on a 32GB workstation. So being strongly limited by my resources and time, I have to choose carefully my experiments and can't let them run forever when they do not give satisfying results after a few epochs._
 
@@ -138,20 +136,21 @@ _Please note that all experiments are currently done on my own 1080TI GPU on a 3
 This is the model from original paper https://arxiv.org/pdf/1909.09436.pdf and I haven't pushed such trainings too far as the authors did it. You can check whole results in the paper.
 
 Just for information here are their MRR and NDCG results for:
+
 - NBOW a simple NN with a linear token embedding (providing the baseline)
 - Bert-like encoding with self-attention
 
 Both are trained using a BPE-style Vocabulary of size 10.000
-       
-|`MRR`| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| NBOW |**0.6167**|0.6409|0.5140|0.4607|0.4835|0.5809|0.4285|
-| Bert-Like |**0.7011**|0.6809|0.5866|0.4506|0.6011|0.6922|0.3651|
 
-|`NDCG`| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| NBOW |**0.164**|0.130|0.121|0.175| 0.123|0.223|0.212|
-| Bert Like |**0.113**|0.049|0.100|0.061|0.094|0.181|0.190|
+| `MRR`     |    Mean    |   Go   |  Java  | Javascript |  Php   | Python |  Ruby  |
+| --------- | :--------: | :----: | :----: | :--------: | :----: | :----: | :----: |
+| NBOW      | **0.6167** | 0.6409 | 0.5140 |   0.4607   | 0.4835 | 0.5809 | 0.4285 |
+| Bert-Like | **0.7011** | 0.6809 | 0.5866 |   0.4506   | 0.6011 | 0.6922 | 0.3651 |
+
+| `NDCG`    |   Mean    |  Go   | Java  | Javascript |  Php  | Python | Ruby  |
+| --------- | :-------: | :---: | :---: | :--------: | :---: | :----: | :---: |
+| NBOW      | **0.164** | 0.130 | 0.121 |   0.175    | 0.123 | 0.223  | 0.212 |
+| Bert Like | **0.113** | 0.049 | 0.100 |   0.061    | 0.094 | 0.181  | 0.190 |
 
 Interestingly, Bert-like models reach much better MRR on training compared to NBOW but not on NDCG. MRR doesn't care about the relevance of the result, just the rank. NDCG cares about relevance and rank. But when you train using default data, there is no relevance, the choice is binary.
 
@@ -159,16 +158,16 @@ In terms of languages, NBOW is better in all cases and behaves better on Java/Py
 
 But it's a bit surprising that simpler NBOW model gives far better result than BERT.
 
-----
+---
 
 #### Query1Code1: Single Bert query encoder, common Bert encoder for all languages
 
 This model is my first target experiment: N encoders is not viable as I am a poor data scientist in my free-time and have only one GPU and 32GB of RAM.
 
 So, I decided to try:
+
 - **1 query encoder+tokenizer (Bert Encoder + BPE Tokenizer)**
 - **1 common code encoder+tokenizer for all languages (Bert Encoder + BPE Tokenizer)**.
-
 
 > Bert models are trained from scratch using well-know [Huggingface transformers library](https://huggingface.co/).
 >
@@ -183,14 +182,14 @@ BPE Vocabulary size is set to 10K for query and code tokenizers.
 Output embedding size is set to 128.
 Query Encoder is a smaller BERT than code encoder to reflect the more complex 5 languages in one single BERT.
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query Path|Bert 512/3/8/128|BPE 10K|
-|1 Code Path|Bert 1024/6/8/128|BPE 10K|
+| `Model`      | Encoder           | Tokenizer |
+| ------------ | ----------------- | --------- |
+| 1 Query Path | Bert 512/3/8/128  | BPE 10K   |
+| 1 Code Path  | Bert 1024/6/8/128 | BPE 10K   |
 
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|
-|---|---|---|---|---|---|---|
-||10|0.0001|softmax_cross_entropy|170|0|~1h30|
+| `Training` | epochs | lr     | loss                  | batch size | seed | epoch duration |
+| ---------- | ------ | ------ | --------------------- | ---------- | ---- | -------------- |
+|            | 10     | 0.0001 | softmax_cross_entropy | 170        | 0    | ~1h30          |
 
 ###### W&B Run
 
@@ -198,13 +197,13 @@ https://app.wandb.ai/mandubian/codenets/runs/j12z3vfr/overview?workspace=user-ma
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.9536|0.8551|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.9536 | 0.8551 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.1014**|0.1294|0.1027|0.0407|0.07784|0.1364|0.1212|
+| NDCG |    Mean    |   Go   |  Java  | Javascript |   Php   | Python |  Ruby  |
+| ---- | :--------: | :----: | :----: | :--------: | :-----: | :----: | :----: |
+|      | **0.1014** | 0.1294 | 0.1027 |   0.0407   | 0.07784 | 0.1364 | 0.1212 |
 
 ###### Analysis
 
@@ -214,7 +213,7 @@ We see that MRR is much higher than what was obtained in CodeSearchNet paper (0.
 
 Yet, this also demonstrates that MRR and NDCG are 2 different metrics and evaluating your model on MRR is not really enough when the benchmark metrics is NDCG. NDCG takes into account the relevance of pieces of code between each others and the ranking. In the dataset, we haven't relevance of piece of codes between each other so it's not trivial to train on a ranking+relevance objective.
 
-----
+---
 
 #### QueryCodeSiamese: common Bert encoder+tokenizer for query and all languages.
 
@@ -222,15 +221,13 @@ Having several BERT models on my 11GB 1080TI limits a lot the size of each model
 
 So I've decided to try the most extreme case: **one single shared BERT and tokenizer for query and tokenizer** and see what happens.
 
-
 The model is then:
-- **1 encoder+tokenizer (Bert Encoder + BPE Tokenizer) for query + all languages**
 
+- **1 encoder+tokenizer (Bert Encoder + BPE Tokenizer) for query + all languages**
 
 > Bert models are trained from scratch using well-know [Huggingface transformers library](https://huggingface.co/).
 >
 > BPE Tokenizers are trained from scratch using new [Hugginface Rust Tokenizer library](https://github.com/huggingface/tokenizers).
-
 
 ##### Experiment 2020/02/14
 
@@ -240,13 +237,13 @@ BPE Vocabulary size is set to 60K which is 6 times bigger than previous experime
 
 In this 1st experiment on this model, output embedding size is set to smaller 72 (<128) to test capability of model to learn a lot with less encoding space. But then I've fixed the intermediate BERT size also to a smaller 256 size while increasing the number of heads and layers to 12 to give the model more capabilities in terms of diversity and depth.
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+Code Path|Bert 256/12/12/72|BPE 60K|
+| `Model`           | Encoder           | Tokenizer |
+| ----------------- | ----------------- | --------- |
+| 1 Query+Code Path | Bert 256/12/12/72 | BPE 60K   |
 
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|
-|---|---|---|---|---|---|---|
-||10|0.0001|softmax_cross_entropy|100|0|~3h|
+| `Training` | epochs | lr     | loss                  | batch size | seed | epoch duration |
+| ---------- | ------ | ------ | --------------------- | ---------- | ---- | -------------- |
+|            | 10     | 0.0001 | softmax_cross_entropy | 100        | 0    | ~3h            |
 
 ###### W&B Run
 
@@ -254,14 +251,13 @@ https://app.wandb.ai/mandubian/codenets/runs/f6ebrliy/overview?workspace=user-ma
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.9669|0.8612|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.9669 | 0.8612 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.1375**|0.1021|0.1475|0.04765|0.1068|0.2039|0.217|
-
+| NDCG |    Mean    |   Go   |  Java  | Javascript |  Php   | Python | Ruby  |
+| ---- | :--------: | :----: | :----: | :--------: | :----: | :----: | :---: |
+|      | **0.1375** | 0.1021 | 0.1475 |  0.04765   | 0.1068 | 0.2039 | 0.217 |
 
 ###### Analysis
 
@@ -271,20 +267,21 @@ With a shared model and tokenizer with smaller embedding and intermediate size b
 
 Now let's see what happens with same siamese configuration but an even smaller embedding size and model.
 
-
 ##### Experiment 2020/02/17
 
 ###### Configuration
 
 Same configuration as before but with smaller output embedding size of 64 and smaller BERT model but a bigger batch size of 290 which accelerates the training.
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+COde Path|Bert 256/6/8/64|BPE 60K|
-----
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|
-|---|---|---|---|---|---|---|
-||10|0.0001|softmax_cross_entropy|290|0|~1h10|
+| `Model`           | Encoder         | Tokenizer |
+| ----------------- | --------------- | --------- |
+| 1 Query+COde Path | Bert 256/6/8/64 | BPE 60K   |
+
+---
+
+| `Training` | epochs | lr     | loss                  | batch size | seed | epoch duration |
+| ---------- | ------ | ------ | --------------------- | ---------- | ---- | -------------- |
+|            | 10     | 0.0001 | softmax_cross_entropy | 290        | 0    | ~1h10          |
 
 ###### W&B Run
 
@@ -292,14 +289,13 @@ https://app.wandb.ai/mandubian/codenets/runs/ath9asmp/overview?workspace=user-ma
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.9286|0.7446|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.9286 | 0.7446 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.1707**|0.1527|0.1716|0.07945|0.1437|0.2492|0.2275|
-
+| NDCG |    Mean    |   Go   |  Java  | Javascript |  Php   | Python |  Ruby  |
+| ---- | :--------: | :----: | :----: | :--------: | :----: | :----: | :----: |
+|      | **0.1707** | 0.1527 | 0.1716 |  0.07945   | 0.1437 | 0.2492 | 0.2275 |
 
 ###### Analysis
 
@@ -311,7 +307,7 @@ Yet surprisingly the NDCG is much higher (0.17 vs 0.10) not so far from SOTA (0.
 >
 > In the current state of my study, I can imagine that bigger BERT models have enough space to overfit the distribution and dispatch all samples (query and code) independently in the embedding space. Then using a much smaller architecture forces the model to gather/clusterize "similar" query/code samples in the same sub-space. But does it mean it unravels any semantics between query and code? It's hard to say in the current state of study and will need much deeper analysis... TO BE CONTINUED.
 
-----
+---
 
 #### QueryCodeSiamese with Albert
 
@@ -325,15 +321,13 @@ This Albert internal embedding layer seemed interesting to me in the CodeSearchN
 
 I chose an Albert model with same smaller output size 64, 256 inner embedding, 512 intermediate size and 6 layers, 8 heads.
 
+| `Model`           | Encoder               | Tokenizer |
+| ----------------- | --------------------- | --------- |
+| 1 Query+COde Path | Albert 256/512/6/8/64 | BPE 60K   |
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+COde Path|Albert 256/512/6/8/64|BPE 60K|
-
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|
-|---|---|---|---|---|---|---|
-||10|0.0001|softmax_cross_entropy|240|0|~1h40|
-
+| `Training` | epochs | lr     | loss                  | batch size | seed | epoch duration |
+| ---------- | ------ | ------ | --------------------- | ---------- | ---- | -------------- |
+|            | 10     | 0.0001 | softmax_cross_entropy | 240        | 0    | ~1h40          |
 
 ###### W&B run
 
@@ -341,14 +335,13 @@ https://app.wandb.ai/mandubian/codenets/runs/mv433863/overview?workspace=user-ma
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.8968|0.7447|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.8968 | 0.7447 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.06165**|0.03714|0.05531|0.01492|0.06287|0.07198|0.1277|
-
+| NDCG |    Mean     |   Go    |  Java   | Javascript |   Php   | Python  |  Ruby  |
+| ---- | :---------: | :-----: | :-----: | :--------: | :-----: | :-----: | :----: |
+|      | **0.06165** | 0.03714 | 0.05531 |  0.01492   | 0.06287 | 0.07198 | 0.1277 |
 
 ###### Analysis
 
@@ -356,7 +349,7 @@ MRR on Train dataset is a bit lower that with Bert and about the same on val dat
 
 It was quite disappointing to discover that result. I hoped it would be at least as good as classic Bert. I don't know Albert limitations enough to have clear clues on this issue. In the paper, they don't use the same tokenizer (SentencePiece) and a large batch optimizer (LAMB). I'll consider it further...
 
-----
+---
 
 #### QueryCodeSiamese with LambdaLoss
 
@@ -372,13 +365,13 @@ Anyway, I was curious to see if LambdaLoss was at least converging on my model i
 
 I've chosen to use smaller Vocabulary of 30K tokens and the same Bert as in the paper.
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+Code Path|Bert 512/6/8/128|BPE 30K|
+| `Model`           | Encoder          | Tokenizer |
+| ----------------- | ---------------- | --------- |
+| 1 Query+Code Path | Bert 512/6/8/128 | BPE 30K   |
 
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|
-|---|---|---|---|---|---|---|
-||10|0.0001|lambda_loss|220|0|~1h30|
+| `Training` | epochs | lr     | loss        | batch size | seed | epoch duration |
+| ---------- | ------ | ------ | ----------- | ---------- | ---- | -------------- |
+|            | 10     | 0.0001 | lambda_loss | 220        | 0    | ~1h30          |
 
 ###### W&B run
 
@@ -386,14 +379,13 @@ https://app.wandb.ai/mandubian/codenets/runs/4nnj6vgh?workspace=user-mandubian
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.9396|0.7992|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.9396 | 0.7992 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.1148**|0.06336|0.122|0.0684|0.09157|0.1637|0.1798|
-
+| NDCG |    Mean    |   Go    | Java  | Javascript |   Php   | Python |  Ruby  |
+| ---- | :--------: | :-----: | :---: | :--------: | :-----: | :----: | :----: |
+|      | **0.1148** | 0.06336 | 0.122 |   0.0684   | 0.09157 | 0.1637 | 0.1798 |
 
 ###### Analysis
 
@@ -401,7 +393,7 @@ We see that the model converges but reaches lower performances than classic Cros
 
 > Next step will be to compute some relevances in some way (coming soon) and retry this lambdaloss on same model compared to crossentropy.
 
-----
+---
 
 #### QueryCodeSiamese with smaller embedding and Bert
 
@@ -410,13 +402,13 @@ Let's go even further with smaller embedding size of 32 and very small Bert mode
 
 ###### Configuration
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+Code Path|Bert 256/2/8/32|BPE 30K|
+| `Model`           | Encoder         | Tokenizer |
+| ----------------- | --------------- | --------- |
+| 1 Query+Code Path | Bert 256/2/8/32 | BPE 30K   |
 
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|
-|---|---|---|---|---|---|---|
-||10|0.0001|cross_entropy|768|0|~30mn|
+| `Training` | epochs | lr     | loss          | batch size | seed | epoch duration |
+| ---------- | ------ | ------ | ------------- | ---------- | ---- | -------------- |
+|            | 10     | 0.0001 | cross_entropy | 768        | 0    | ~30mn          |
 
 ###### W&B run
 
@@ -424,13 +416,13 @@ https://app.wandb.ai/mandubian/codenets/runs/wz2uafe7?workspace=user-mandubian
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.7356|0.6147|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.7356 | 0.6147 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.1721**|0.1064|0.1803|0.108|0.1508|0.2683|0.219|
+| NDCG |    Mean    |   Go   |  Java  | Javascript |  Php   | Python | Ruby  |
+| ---- | :--------: | :----: | :----: | :--------: | :----: | :----: | :---: |
+|      | **0.1721** | 0.1064 | 0.1803 |   0.108    | 0.1508 | 0.2683 | 0.219 |
 
 ###### Analysis
 
@@ -439,11 +431,9 @@ But the NDCG computed on benchmark is even higher than previous best bigger Bert
 
 So, the higher compression of embedding space seems to be better for NDCG and worse for MRR. I can imagine this compression forces the model to clusterize samples in the same sub-space. Something I didn't study is also the common vocabulary which also gathers all queries and language in the same tokenization space.
 
-
 > I'd need to study distribution of embedding space and tokenization to find further clues.
 
-
-----
+---
 
 #### QueryCodeSiamese with smaller embedding/model but longer token code sequences
 
@@ -451,18 +441,17 @@ In previous experiments, Javascript language have appeared to give the worst res
 
 If we check language code distribution in [distribution notebook](https://github.com/mandubian/codenets/blob/master/codenets/codesearchnet/notebooks/codesearchnet_distrib.ipynb), we see that JS is a language that tends to be more verbose with more tokens than other languages. In previous experiments, we have trained our models with 200 max code tokens because in all languages, 200 represents the 0.9-quantile in all languages except JS. We could try to accept more code tokens and see how the model behaves (specially for JS)
 
-
 ###### Configuration
 
 We take the same model with small emnedding but accept up to 400 code tokens for all languages.
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+Code Path|Bert 256/2/8/32|BPE 30K|
+| `Model`           | Encoder         | Tokenizer |
+| ----------------- | --------------- | --------- |
+| 1 Query+Code Path | Bert 256/2/8/32 | BPE 30K   |
 
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|max code tokens|
-|---|---|---|---|---|---|---|---|
-||10|0.0001|cross_entropy|768|0|~30mn|400|
+| `Training` | epochs | lr     | loss          | batch size | seed | epoch duration | max code tokens |
+| ---------- | ------ | ------ | ------------- | ---------- | ---- | -------------- | --------------- |
+|            | 10     | 0.0001 | cross_entropy | 768        | 0    | ~30mn          | 400             |
 
 ###### W&B run
 
@@ -470,13 +459,13 @@ https://app.wandb.ai/mandubian/codenets/runs/e42kovab/overview?workspace=user-ma
 
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.7356|0.6078|
+| Max MRR | Train  | Val    |
+| ------- | ------ | ------ |
+|         | 0.7356 | 0.6078 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.1779**|0.1065|0.1803|0.1291|0.1321|0.2485|0.2407|
+| NDCG |    Mean    |   Go   |  Java  | Javascript |  Php   | Python |  Ruby  |
+| ---- | :--------: | :----: | :----: | :--------: | :----: | :----: | :----: |
+|      | **0.1779** | 0.1065 | 0.1803 |   0.1291   | 0.1321 | 0.2485 | 0.2407 |
 
 ###### Analysis
 
@@ -486,7 +475,7 @@ the mean NDCG is a bit higher than previous experiment. But if we check each lan
 
 So, increasing the max number of code tokens improves a bit JS results but not the others. As previous 200 max code tokens were already in the 0.9-quantile for most languages, it means adding more tokens doesn't bring much more to model training.
 
-----
+---
 
 #### QueryCodeSiamese with smaller embedding/model and BPE sub-tokenization
 
@@ -498,28 +487,27 @@ So we could try to train a 30K BPE tokenizer using sub-tokenization by splitting
 
 We take the same model with small emnedding but accept up to 400 code tokens for all languages.
 
-|`Model`|Encoder|Tokenizer|
-|---|---|---|
-|1 Query+Code Path|Bert 256/2/8/32|BPE 30K subtokenized|
+| `Model`           | Encoder         | Tokenizer            |
+| ----------------- | --------------- | -------------------- |
+| 1 Query+Code Path | Bert 256/2/8/32 | BPE 30K subtokenized |
 
-|`Training`|epochs|lr|loss|batch size|seed|epoch duration|max code tokens|
-|---|---|---|---|---|---|---|---|
-||10|0.0001|cross_entropy|768|0|~30mn|200|
+| `Training` | epochs | lr     | loss          | batch size | seed | epoch duration | max code tokens |
+| ---------- | ------ | ------ | ------------- | ---------- | ---- | -------------- | --------------- |
+|            | 10     | 0.0001 | cross_entropy | 768        | 0    | ~30mn          | 200             |
 
 ###### W&B run
 
 https://app.wandb.ai/mandubian/codenets/runs/5jbus5as?workspace=user-mandubian
 
-
 ###### Metrics
 
-|Max MRR|Train|Val|
-|---|---|---|
-||0.7346|0.609|
+| Max MRR | Train  | Val   |
+| ------- | ------ | ----- |
+|         | 0.7346 | 0.609 |
 
-|NDCG| Mean | Go | Java | Javascript  | Php | Python | Ruby |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|   |**0.151**|0.09706|0.2014|0.1036|0.1299|0.1894|0.1846|
+| NDCG |   Mean    |   Go    |  Java  | Javascript |  Php   | Python |  Ruby  |
+| ---- | :-------: | :-----: | :----: | :--------: | :----: | :----: | :----: |
+|      | **0.151** | 0.09706 | 0.2014 |   0.1036   | 0.1299 | 0.1894 | 0.1846 |
 
 ###### Analysis
 
@@ -527,7 +515,7 @@ Results in MRR are almost the same.
 
 NDCG is lower than both previous experiments with same model for all language except java that seems to get light advantage from this tokenizer. This is a bit surprising to me: is it due to the fact that sub-tokenization doesn't really bring anything or that smaller embedding/BERT can't take advantage from it? We need to experiment with a bigger embedding and model to check that.
 
-----
+---
 
 #### Next experiments
 
@@ -545,3 +533,12 @@ _Incoming_
 ## For future, pre-Trained models ?
 
 I'll publish my models if I can reach some good performances (this is not the case yet)
+
+ANNOY on Macos
+
+> brew install gcc
+> brew info gcc
+> (and get the path to the brew-installed gcc bin)
+> env CXX=/your/brew-installed/gcc/version-number/bin/g++-8\
+> CC=/your/brew-installed/gcc/version-number/bin/gcc-8\
+>  pip install annoy

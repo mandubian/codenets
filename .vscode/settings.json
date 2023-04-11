@@ -1,25 +1,23 @@
 {
-    "python.pythonPath": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.7/bin/python",
-    "python.linting.lintOnSave": true,
-    "python.linting.pylintEnabled": false,
-    "python.linting.pylamaEnabled": true,
-    "python.linting.mypyEnabled": true,
-    "python.formatting.provider": "black",
-    "python.formatting.blackArgs": [
-        "--line-length",
-        "120"
-    ],
-    "[python]": {
-        "editor.formatOnSave": true,
-        "editor.formatOnSaveTimeout": 2000,
-        "editor.rulers": [
-            120
-        ]
-    },
-    "autoDocstring.docstringFormat": "google",
-    "git.ignoreLimitWarning": true,
-    "mypy.executable": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.7/bin/mypyls",
-    // "mypy.targets": [
-    //     "./src"
-    // ],
+  // "python.pythonPath": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.7/bin/python",
+  "python.linting.lintOnSave": true,
+  "python.linting.pylintEnabled": false,
+  "python.linting.pylamaEnabled": true,
+  "python.linting.mypyEnabled": true,
+  "python.formatting.provider": "black",
+  "python.formatting.blackArgs": ["--line-length", "120"],
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveTimeout": 2000,
+    "editor.rulers": [120]
+  },
+  "autoDocstring.docstringFormat": "google",
+  "git.ignoreLimitWarning": true,
+  "python.testing.pytestArgs": ["test"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true
+  // "mypy.executable": "/Users/Pascal/Library/Caches/pypoetry/virtualenvs/codenets-O5WbUhkp-py3.7/bin/mypyls",
+  // "mypy.targets": [
+  //     "./src"
+  // ],
 }

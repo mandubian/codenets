@@ -7,11 +7,10 @@ from loguru import logger
 from pathlib import Path
 import time
 
-# from torch import nn
 import numpy as np
 from transformers import AdamW
 from pyhocon import ConfigTree
-from tokenizers import BPETokenizer
+from tokenizers import CharBPETokenizer
 from tokenizers.normalizers import BertNormalizer
 from codenets.recordable import Recordable, RecordableMapping
 from codenets.codesearchnet.dataset_utils import LangDataset
@@ -20,7 +19,6 @@ from codenets.codesearchnet.training_ctx import CodeSearchTrainingContext, Datas
 from codenets.codesearchnet.tokenizer_recs import TokenizerRecordable
 from codenets.codesearchnet.training_ctx import ModelAndAdamWRecordable, default_sample_update
 
-# from codenets.codesearchnet.tokenizer_recs import load_query_code_tokenizers_from_hocon_single_code_tokenizer
 from codenets.codesearchnet.query_1_code_1.model import Query1Code1
 from codenets.codesearchnet.query_1_code_1.dataset import build_lang_dataset_single_code_tokenizer
 from codenets.codesearchnet.huggingface.tokenizer_recs import (
@@ -36,8 +34,6 @@ class Query1Code1ModelAndAdamW(ModelAndAdamWRecordable):
     we need to load both together or it's no generic.
     It is linked to optimizer AdamW because it's impossible to load
     something you don't know the class... Not very elegant too...
-    For now, it doesn't manage the device of the model which is an issue
-    but I haven't found an elegant solution to do that...
     To be continued
     """
 
@@ -69,8 +65,8 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
         if res is not None:
             query_tokenizer, code_tokenizer = res
         else:
-            #raise ValueError("Couldn't load Tokenizers from conf")
-            query_tokenizer, code_tokenizer = None, None
+            raise ValueError("Couldn't load Tokenizers from conf")
+            # query_tokenizer, code_tokenizer = None, None
 
         device = torch.device(conf["training.device"])
         model = Query1Code1.from_hocon(conf)
@@ -145,17 +141,17 @@ class Query1Code1Ctx(CodeSearchTrainingContext):
 
     def tokenize_query_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.query_tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_sentences(
         self, sentences: List[str], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.code_tokenizer.encode_sentences(sentences, max_length)
 
     def tokenize_code_tokens(
         self, tokens: Iterable[List[str]], max_length: Optional[int] = None
-    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         return self.code_tokenizer.encode_tokens(tokens, max_length)
 
     def build_lang_dataset(self, dataset_type: DatasetType) -> LangDataset:
@@ -232,18 +228,18 @@ def train_huggingface_bpetokenizers(
     data_params: DatasetParams, query_files: List[Path], lang_files: Dict[str, Path]
 ) -> Tuple[TokenizerRecordable, TokenizerRecordable]:
     logger.info(
-        f"Building Query BPETokenizer from query_files {query_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
+        f"Building Query CharBPETokenizer from query_files {query_files} with do_lowercase:{data_params.do_lowercase} special_tokens:{data_params.special_tokens}"
     )
-    query_tokenizer = BPETokenizer()
-    query_tokenizer.normalizer = BertNormalizer.new(
+    query_tokenizer = CharBPETokenizer()
+    query_tokenizer.normalizer = BertNormalizer(
         clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
     )
     query_tokenizer.train(
         files=list(map(str, query_files)), vocab_size=data_params.vocab_size, special_tokens=data_params.special_tokens
     )
 
-    code_tokenizer = BPETokenizer()
-    code_tokenizer.normalizer = BertNormalizer.new(
+    code_tokenizer = CharBPETokenizer()
+    code_tokenizer.normalizer = BertNormalizer(
         clean_text=True, handle_chinese_chars=True, strip_accents=True, lowercase=data_params.do_lowercase
     )
     code_tokenizer.train(
@@ -268,8 +264,6 @@ def build_huggingface_bpetokenizers(
 
     query_files, lang_files = build_huggingface_token_files(dirs, data_params, output_path, sample_update)
     query_tokenizer, code_tokenizer = train_huggingface_bpetokenizers(data_params, query_files, lang_files)
-    #query_tokenizer_rec = HuggingfaceBPETokenizerRecordable(query_tokenizer)
-    #code_tokenizer_rec = HuggingfaceBPETokenizerRecordable(code_tokenizer)
     end = time.time()
 
     time_p = end - start
@@ -282,7 +276,7 @@ def build_huggingface_bpetokenizers(
     txt = "This is a docstring".lower()
     encoded_ids, mask = query_tokenizer.encode_sentence(txt)
     logger.debug(f"encoded_ids {encoded_ids}")
-    decoded = query_tokenizer.decode_sequence(encoded_ids)
+    decoded = query_tokenizer.decode_sequence(encoded_ids.tolist())
     logger.debug(f"decoded {decoded}")
     logger.debug(f"txt {txt}")
     # assert decoded == txt

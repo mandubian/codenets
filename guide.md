@@ -26,21 +26,26 @@ Mon but ici n'est pas de parler du fond (mes résultats n'étaient pas très int
   - [Recordable spécialisé configuration HOCON](./codenets/recordable.py#L113)
   - [Recordable spécialisé modèle/tokenizer TorchModule](./codenets/recordable.py#L248)
   - [training context générique](./codenets/codesearchnet/training_ctx.py#L245)
-  - [training context spécialisé sur un modèle spécifique](./codenets/codesearchnet/query_code_siamese/training_ctx.py)
+  - [training context spécialisé sur un modèle spécifique](./codenets/codesearchnet/query_code_siamese/training_ctx.py#L40)
 - Evaluation de la complexité de réécriture d'un code Tensorflow vers du PyTorch et les librairies huggingface.
 - Intégration avec WanDB/Tensorflow pour le suivi des entraînements.
 
 et de manière plus spécifique:
 
 - Etudier les résultats atteignables avec des transformers de petite taille sur un challenge de ce type
-  et les résultats ont été très décevants cf. [readme](./README.md)
-- Utilisation de tokenizers natifs Rust avec interface Python de Huggingface tokenizers (qui venaient d'être publiés en 2020): [tokenizer_recs.py](./codenets/codesearchnet/huggingface/tokenizer_recs.py#L102)
-- Utilisation des parsers d'AST de langages (tree-sitter) pour améliorer les performances: [ast_buid.py](./codenets/codesearchnet/ast_build.py#L189)
+  et les résultats ont été très décevants cf.
+  - [README.md](./README.md)
+- Utilisation de tokenizers natifs Rust avec interface Python de Huggingface tokenizers (qui venaient d'être publiés en 2020):
+  - [tokenizer_recs.py](./codenets/codesearchnet/huggingface/tokenizer_recs.py#L102)
+- Utilisation des parsers d'AST de langages (tree-sitter) pour améliorer les performances
+  - [ast_build.py](./codenets/codesearchnet/ast_build.py#L189)
 
 ## Conclusion
 
-Je ne conseillerais pas spécialement la qualité de ce code qui est un peu compliqué selon mon point de vue mais je retiendrai les points suivants:
+Je ne conseillerais pas spécialement ce code qui est un peu "over-engineered" et compliqué selon mon point de vue mais je retiendrai les points suivants:
 
-- L'utilisation des configurations HOCON est un réel pour tout projet informatique quel que soit le langage à mon avis car cela permet de gérer des configurations avec différents niveaux de généricité et permettant d'utiliser facilement des variables.
-- le typage dans Python est fonctionnel et permet d'améliorer la robustesse globale du code et mypy semble être une solution efficace pour vérifier les types. Cependant, l'utilisation des types génériques et abstraits est assez lourde et les problèmes classiques de la programmation orienteé objet comme l'héritage multiple surgissent assez vite. L'utilisation des NewTypes reste anecdotique de mon point de vue car les opérations mathématiques sur ces types leur font perdre leur spécificité.
+- L'utilisation des configurations HOCON est un réel pus pour tout projet informatique quel que soit le langage à mon avis car cela permet de gérer des configurations avec différents niveaux de généricité et 'utiliser facilement des variables.
+- le typage dans Python est fonctionnel et permet d'améliorer la robustesse globale du code et mypy semble être une solution efficace pour vérifier les types. Cependant, l'utilisation des types génériques et abstraits est assez fastidieuse et les problèmes classiques de la programmation orienteé objet comme l'héritage multiple surgissent assez vite. L'utilisation des NewTypes reste anecdotique de mon point de vue car les opérations mathématiques sur ces types leur font perdre leur spécificité.
 - la sauvegarde générique complète d'un projet ML est intéressante dans l'optique de backup et versioning de projets ML en associant l'intégralité des ressources: code, configuration, modèle, tokenizer etc...
+
+Si vous avez des questions, n'hésitez pas à me demander.

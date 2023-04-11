@@ -1,7 +1,7 @@
 """The Recordable Typeclass-like or behavior-like Python interface"""
 
 from __future__ import annotations
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import json
 import os
 import shutil
@@ -19,7 +19,7 @@ from codenets.utils import full_classname, instance_full_classname, runtime_impo
 Recordable_T = TypeVar("Recordable_T", bound="Recordable")
 
 
-class Recordable:
+class Recordable(ABC):
     """A recordable is something that be saved or loaded from a directory"""
 
     @abstractmethod

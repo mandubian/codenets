@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
 from typing import Iterable, List, Optional, Tuple, Dict, cast
 import numpy as np
@@ -15,7 +15,7 @@ from codenets.codesearchnet.data import DatasetParams
 from codenets.codesearchnet.copied_code.metadata import Metadata, append_metadata, build_tokenizer_metadata
 
 
-class TokenizerRecordable(ABC, Recordable):
+class TokenizerRecordable(Recordable):
     @abstractmethod
     def tokenize(self, text: str, **kwargs) -> List[str]:
         pass

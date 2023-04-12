@@ -5,9 +5,9 @@ J'ai remis ce projet à jour pour cette présentation car je me suis aperçu que
 
 ## Points techniques remarquables
 
-Mon but ici n'est pas de parler du fond ML/IA (mes résultats n'étaient pas très intéressants) mais plutôt du codeet plus spécifiquement les points suivants:
+Mon but ici n'est pas de parler du fond ML/IA (mes résultats n'étaient pas très intéressants) mais plutôt du code et plus spécifiquement les points suivants:
 
-- Projet complet Python/ML avec gestion des dépendances (poetry), isolation dans un virtualenv, intégration dans VSCode (qui devenait le standard de dev) avec utilisation d'extensions: mypy, linters, license, tests (même si anecdotiques), etc...
+- Projet complet Python/ML avec gestion des dépendances (poetry), isolation dans un virtualenv, intégration dans VSCode (qui devenait le standard de dev en 2020) avec utilisation d'extensions: mypy, linters, license, tests (même si anecdotiques), etc...
 
   - [pyproject.toml](./pyproject.toml)
   - et pour info, la [license](./LICENSE)
@@ -50,7 +50,7 @@ et de manière plus anecdotique:
 
   - [tokenizer_recs.py](./codenets/codesearchnet/huggingface/tokenizer_recs.py#L102)
 
-- Utilisation des parsers d'AST de langages (tree-sitter) pour améliorer les performances
+- Utilisation des parsers d'AST de langages (tree-sitter) pour améliorer les performances des modèles à base de transformers (je n'ai pas réussi à pousser les expérimentations très loin par manque de ressources GPU)
   - [ast_build.py](./codenets/codesearchnet/ast_build.py#L189)
 
 ## Conclusion
@@ -60,7 +60,7 @@ Au final, je retiendrai les points suivants:
 - L'utilisation des configurations HOCON est intéressante pour tout projet informatique quel que soit le langage à mon avis car cela permet de gérer des configurations complexes avec des variables/références tout en restant simple de format.
 - la sauvegarde générique complète d'un projet ML du code au modèle et dataset me semble un point important dans l'optique de backup et versioning de projets ML en associant l'intégralité des ressources: code, configuration, modèle, tokenizer, dataset etc...
 - le typage fort dans Python est devenu un outil intéressant qui permet d'améliorer la robustesse globale du code, de réduire la quantité de tests unitaires. Mypy semble être une solution robuste pour vérifier les types même s'il faut filtrer de nombreuses dépendances externes qui n'intègrent pas la gestion des types. Cependant, l'utilisation trop fréquente des unions de types dans les librairies Python peut conduire à des signatures de type assez indigestes.
-- L'utilisation des types génériques et abstraits est fonctionnelle mais reste assez fastidieuse en Python et ne donne pas l'impression d'être une fonctionnalité native du langage (sans parler des cast au runtime qui peuvent poser des problèmes de performance). Il vaut mieux rester dans les patterns orienté objet classiques et éviter de trop s'aventurer en dehors des sentiers battus.
+- L'utilisation des types génériques et abstraits est fonctionnelle mais reste assez fastidieuse en Python et ne donne pas l'impression d'être une fonctionnalité native du langage (sans parler des cast au runtime qui peuvent poser des problèmes de performance). Il vaut mieux rester dans les patterns orienté-objet classiques et éviter de trop s'aventurer en dehors des sentiers battus.
 - L'utilisation des NewTypes reste encore anecdotique de mon point de vue (en particulier, les opérations mathématiques ou de concaténation sur ces types leur font perdre leur spécificité)
 
 Si vous avez des questions, n'hésitez pas à me contacter.
